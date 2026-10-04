@@ -35,6 +35,12 @@ class Settings:
     database_path: str = str(ROOT / "data" / "feedback_agent.db")
     trace_dir: str = str(ROOT / "traces")
     data_dir: str = str(ROOT / "data")
+    # API protection for a shared/public deployment; every limit is off (0 / empty) unless set
+    api_token: str = field(default="", repr=False)
+    rate_limit_per_min: int = 0       # POST /feedback per client IP
+    daily_request_limit: int = 0      # reports created per UTC day, all clients
+    daily_token_limit: int = 0        # prompt+output tokens per UTC day, all clients
+    trust_proxy: bool = False         # take the client IP from X-Forwarded-For (only behind your own proxy)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -54,4 +60,9 @@ class Settings:
             price_out=_opt_float("PRICE_PER_MTOK_OUT"),
             database_path=e("DATABASE_PATH", str(ROOT / "data" / "feedback_agent.db")),
             trace_dir=e("TRACE_DIR", str(ROOT / "traces")),
+            api_token=e("API_TOKEN", ""),
+            rate_limit_per_min=int(e("RATE_LIMIT_PER_MIN", "0")),
+            daily_request_limit=int(e("DAILY_REQUEST_LIMIT", "0")),
+            daily_token_limit=int(e("DAILY_TOKEN_LIMIT", "0")),
+            trust_proxy=e("TRUST_PROXY", "").strip().lower() in ("1", "true", "yes"),
         )

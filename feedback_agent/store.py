@@ -133,6 +133,16 @@ class Store:
             rows = c.execute(q + " ORDER BY created_at, id", args).fetchall()
         return [dict(r) for r in rows]
 
+    def usage_since(self, day_start_iso: str) -> tuple[int, int]:
+        """(reports created at/after the timestamp, prompt+output tokens they used) for daily caps."""
+        with self.conn() as c:
+            rows = c.execute("SELECT payload_json FROM reports WHERE created_at >= ?", (day_start_iso,)).fetchall()
+        tokens = 0
+        for r in rows:
+            counters = json.loads(r["payload_json"]).get("counters", {})
+            tokens += (counters.get("prompt_tokens") or 0) + (counters.get("output_tokens") or 0)
+        return len(rows), tokens
+
     def reviews_for(self, report_id: str) -> list[dict]:
         with self.conn() as c:
             rows = c.execute("SELECT * FROM reviews WHERE report_id=? ORDER BY id", (report_id,)).fetchall()
