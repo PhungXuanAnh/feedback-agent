@@ -1,0 +1,5 @@
+# Plain HTTP on :8898 (port-only address, so Caddy does not try automatic TLS).
+:8898 {
+	encode gzip
+	reverse_proxy app:8000
+}

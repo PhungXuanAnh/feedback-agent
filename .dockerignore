@@ -8,3 +8,4 @@ data/*.db
 eval/results
 *.egg-info
 tests
+deploy/.env.prod

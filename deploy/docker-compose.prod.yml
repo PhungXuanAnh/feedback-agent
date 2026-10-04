@@ -1,0 +1,33 @@
+# Isolated demo stack: the app is reachable only through Caddy on port 8898 (plain HTTP, same pattern as other
+# demos on this host). Own compose project, own network and volumes; nothing else on the host is touched.
+name: feedback-agent
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env.prod                  # GEMINI_API_KEY, API_TOKEN and the limits (never committed)
+    environment:
+      TRUST_PROXY: "1"                   # the client IP comes from Caddy's X-Forwarded-For; the app has no published port
+    volumes:
+      - state:/app/state
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 200
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8898:8898"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+    depends_on:
+      - app
+volumes:
+  state: {}
+  caddy_data: {}
+  caddy_config: {}
