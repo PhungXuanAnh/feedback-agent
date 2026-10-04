@@ -7,8 +7,13 @@ services:
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       LLM_MODEL: ${LLM_MODEL:-gemini-3.8-flash}
-      LLM_THINKING_LEVEL: ${LLM_THINKING_LEVEL:-low}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_THINKING_LEVEL: ${LLM_THINKING_LEVEL-low}   # no colon: an empty value in .env is kept (model default)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-${LLM_API_KEY:-}}   # LLM_API_KEY is accepted as an alias
+      MAX_LLM_TURNS: ${MAX_LLM_TURNS:-4}
+      MAX_TOOL_CALLS: ${MAX_TOOL_CALLS:-6}
+      MAX_OUTPUT_TOKENS: ${MAX_OUTPUT_TOKENS:-8192}
+      PRICE_PER_MTOK_IN: ${PRICE_PER_MTOK_IN:-}
+      PRICE_PER_MTOK_OUT: ${PRICE_PER_MTOK_OUT:-}
     volumes: ["state:/app/state"]
 volumes:
   state: {}
