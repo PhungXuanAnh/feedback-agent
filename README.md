@@ -1,5 +1,6 @@
 - [1. Agentic Customer Feedback System](#1-agentic-customer-feedback-system)
   - [1.1. Quick start](#11-quick-start)
+    - [1.1.0. Local setup](#110-local-setup)
     - [1.1.1. Live demo (no setup)](#111-live-demo-no-setup)
     - [1.1.2. Try your own feedback (needs the Gemini key)](#112-try-your-own-feedback-needs-the-gemini-key)
   - [1.2. Architecture](#12-architecture)
@@ -22,9 +23,14 @@ interface; a **scripted provider** replays recorded turns, so tests, samples and
 
 ## 1.1. Quick start
 
+Start this project locally or use the live demo below, then try run your own feedback using `curl` commands as shown in the sections below.
+
+### 1.1.0. Local setup
+
 Requires only Docker with Compose v2. From the repository folder (`feedback-agent/`):
 
 ```bash
+cd  feedback-agent
 docker compose run --rm app pytest                              # the test suite, offline, no key needed
 docker compose run --rm app python -m feedback_agent demo       # full run offline: report, trace, review queue, officer approval
 ```
@@ -40,8 +46,9 @@ Every `python -m feedback_agent ...` command in this README runs the same way in
 
 ### 1.1.1. Live demo (no setup)
 
-A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). Open `/docs` for the Swagger UI, click *Authorize* and paste the access token I sent with the submission
-(it goes in the `X-API-Token` header); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
+- A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). 
+- Open `/docs` for the Swagger UI, click *Authorize* and paste the demo access token `wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`
+(it goes in the `X-API-Token` header; it only opens this demo, please do not share it); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
 at most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens. It runs on a small shared host, stores the reports you submit, and will be taken down after the review period,
 so please do not send real or sensitive data. If it is down or the daily cap is reached, everything works the same locally (below).
 
@@ -61,13 +68,22 @@ any other email is treated as an unknown sender (`not_found`, "unverified custom
 `POST /feedback`, click *Try it out*, paste a body such as the one below and *Execute*; then use `GET /reports` and `POST /reports/{id}/review` the same way. The same calls with `curl`:
 
 ```bash
-curl -s -X POST localhost:8000/feedback -H 'Content-Type: application/json' -d '{
+# ----------- local
+export BASE=http://localhost:8000      
+export TOKEN=local                     # local: any value works (no auth)
+
+# ----------- live demo
+export BASE=http://feedback-agent.xuananh1.site:8898
+export TOKEN=wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy
+
+
+curl -s -X POST $BASE/feedback -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' -d '{
   "text": "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate.",
   "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # optional: "received_at": "2026-09-22T09:00:00Z"
-curl -s "localhost:8000/reports?status=pending_review"                         # the review queue
-curl -s -X POST localhost:8000/reports/<report_id>/review -H 'Content-Type: application/json' \
+curl -s "$BASE/reports?status=pending_review" -H "X-API-Token: $TOKEN"        # the review queue
+curl -s -X POST $BASE/reports/<report_id>/review -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' \
      -d '{"decision": "approve", "actor": "me", "note": "ok"}'                 # approve | override | reject (stub executor)
-curl -s localhost:8000/traces/<trace_id>                                       # step-by-step trace
+curl -s $BASE/traces/<trace_id> -H "X-API-Token: $TOKEN"                       # step-by-step trace
 ```
 
 Without `received_at` the feedback is dated now; policies are chosen by that date and the mock invoices are from mid-2026, so use `received_at` to line up with them.
