@@ -87,13 +87,23 @@ export BASE=http://feedback-agent.xuananh1.site:8898
 export TOKEN=wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy
 
 
+# 1) Submit feedback. Every value is yours to choose: "text" is the customer message, "customer_email" must be one of the mock customers in the table above,
+#    "channel" is email | web_form | chat | api, "received_at" is optional (see the note below). The JSON response contains "report_id" and "trace_id": copy them for steps 3 and 4.
 curl -s -X POST $BASE/feedback -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' -d '{
   "text": "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate.",
-  "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # 1) submit feedback -> returns report_id + trace_id (optional: "received_at": "2026-09-22T09:00:00Z")
-curl -s "$BASE/reports?status=pending_review" -H "X-API-Token: $TOKEN"        # 2) list reports waiting for an officer
+  "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # optional: "received_at": "2026-09-22T09:00:00Z"
+
+# 2) List the reports waiting for an officer. "status" is a filter you pick (pending_review | approved | overridden | rejected | executed, or drop it for all);
+#    each row shows its "report_id", so this is the other place to find the id for step 3 (e.g. a report created earlier or by someone else).
+curl -s "$BASE/reports?status=pending_review" -H "X-API-Token: $TOKEN"
+
+# 3) Officer decision. Replace <report_id> with the "report_id" from step 1 or from the list in step 2 (looks like rep_ + 10 hex characters; one that was already decided returns the same result or 409).
+#    "decision" is approve | override | reject, "actor" is your name for the audit log, "note" is free text.
 curl -s -X POST $BASE/reports/<report_id>/review -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' \
-     -d '{"decision": "approve", "actor": "me", "note": "ok"}'                 # 3) officer decides: approve | override | reject (stub executor)
-curl -s $BASE/traces/<trace_id> -H "X-API-Token: $TOKEN"                       # 4) audit trail of the run (use the trace_id from step 1)
+     -d '{"decision": "approve", "actor": "me", "note": "ok"}'
+
+# 4) Audit trail of one run. Replace <trace_id> with the "trace_id" from the step 1 response (looks like tr_ + 12 hex characters; it is also a field of the report).
+curl -s $BASE/traces/<trace_id> -H "X-API-Token: $TOKEN"
 ```
 
 Without `received_at` the feedback is dated now; policies are chosen by that date and the mock invoices are from mid-2026, so use `received_at` to line up with them.
