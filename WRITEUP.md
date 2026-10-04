@@ -22,7 +22,7 @@ Measured runs informed the default step cap: over 42 live runs per setting a nor
 * **Cost and latency:** tune caps and thinking level per step (low thinking already cut median latency from about 13 s to 5 s), a smaller model for classification, prompt caching, async or batch intake, per-request cost alerts.
 * **Evaluation:** a much larger labelled set from real tickets, retrieval recall@k, an LLM judge calibrated against officers, a CI gate per prompt version, and the **override rate** as the standing quality signal. Confidence is a heuristic today and needs calibration.
 * **Security and governance:** authenticate the sender (the current scope lock only matches metadata), PII redaction and retention for traces, an injection classifier plus a red-team suite, tiered review (a human always for money, legal and security).
-* **Retrieval at scale:** metadata pre-filters (date, authority, scope), hybrid keyword and vector search with a reranker, deterministic conflict rules, caching and recall measurement (README section 1.7).
+* **Retrieval at scale:** metadata pre-filters (date, authority, scope), hybrid keyword and vector search with a reranker, deterministic conflict rules, caching and recall measurement (README section [1.7](README.md#17-scaling-the-knowledge-base-not-built-here)).
 
 ## 3. What did I deliberately leave out, and why?
 

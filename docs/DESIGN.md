@@ -1,6 +1,6 @@
 # Design details and reference
 
-Details behind the summaries in the [README](../README.md) (sections 1.4, 1.6 and 1.7). For the reasoning and trade-offs in one page, read [`WRITEUP.md`](../WRITEUP.md).
+Details behind the summaries in the [README](../README.md) (sections [1.4](../README.md#14-design-decisions-and-safeguards), [1.6](../README.md#16-api-and-configuration-reference) and [1.7](../README.md#17-scaling-the-knowledge-base-not-built-here)). For the reasoning and trade-offs in one page, read [`WRITEUP.md`](../WRITEUP.md).
 
 - [Injection guard and layered defences](#injection-guard-and-layered-defences)
 - [Classification](#classification)
@@ -44,7 +44,7 @@ The evidence gate refuses `submit_report` until guidelines, customer and policie
 
 Two separate caps: `max_llm_turns` (agent-loop turns, default 4, includes the forced-submit and repair turns; classify is counted separately) and `max_tool_calls` (default 6; cache hits and `submit_report` are free).
 The last turn is reserved for `submit_report`; if sources are still missing the system runs those lookups itself (`forced_by_system`, max 3, traced), so gate and cap cannot deadlock.
-Worst case per request: 1 classify + 4 agent turns, each retried once, so up to 10 provider calls (all counted). The sweep behind the default of 4 is in the README (1.5).
+Worst case per request: 1 classify + 4 agent turns, each retried once, so up to 10 provider calls (all counted). The sweep behind the default of 4 is in the README ([1.5](../README.md#15-evaluation-and-limitations)).
 
 ## Grounding validator
 
