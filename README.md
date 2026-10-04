@@ -21,6 +21,13 @@ python -m feedback_agent demo            # full run offline: report, trace, revi
 For the real model: `cp .env.example .env` and set `GEMINI_API_KEY` (`LLM_API_KEY` is also accepted). Docker: `docker compose up --build`
 (API on :8000, health check; no key needed to start) or `docker compose run --rm app python -m feedback_agent demo`.
 
+### Live demo (no setup)
+
+A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). Open `/docs` for the Swagger UI, click *Authorize* and paste the access token I sent with the submission
+(it goes in the `X-API-Token` header); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
+at most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens. It runs on a small shared host, stores the reports you submit, and will be taken down after the review period,
+so please do not send real or sensitive data. If it is down or the daily cap is reached, everything works the same locally (below).
+
 ### Try your own feedback (needs the Gemini key)
 
 The scripted provider only replays recorded turns, so free text needs the real model. The mock database has these customers (all in `data/seed/customers.csv`);
