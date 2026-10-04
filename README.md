@@ -58,6 +58,7 @@ Without a server: `python -m feedback_agent run <file.json>` (feedback from a JS
 | `MAX_OUTPUT_TOKENS` | `8192` | per-call limit (thinking tokens count against it) |
 | `PRICE_PER_MTOK_IN` / `_OUT` | unset | cost is estimated only when both are set, otherwise `unknown` (never 0) |
 | `DATABASE_PATH`, `TRACE_DIR` | `data/feedback_agent.db`, `traces/` | SQLite file, JSONL traces |
+| `API_TOKEN`, `RATE_LIMIT_PER_MIN`, `DAILY_REQUEST_LIMIT`, `DAILY_TOKEN_LIMIT`, `TRUST_PROXY` | unset (all protection off) | for a shared deployment: clients send header `X-API-Token`; per-IP rate limit on `POST /feedback`; daily request and token caps counted in SQLite; see [`deploy/DEPLOY.md`](deploy/DEPLOY.md) |
 
 ## Architecture
 
