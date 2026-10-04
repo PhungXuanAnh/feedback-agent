@@ -1,7 +1,7 @@
 - [1. Agentic Customer Feedback System](#1-agentic-customer-feedback-system)
   - [1.1. Quick start](#11-quick-start)
-    - [1.1.0. Local setup](#110-local-setup)
-    - [1.1.1. Live demo (no setup)](#111-live-demo-no-setup)
+    - [1.1.0. Live demo (no setup)](#110-live-demo-no-setup)
+    - [1.1.1. Local setup](#111-local-setup)
     - [1.1.2. Try your own feedback (needs the Gemini key)](#112-try-your-own-feedback-needs-the-gemini-key)
   - [1.2. Architecture](#12-architecture)
   - [1.3. Components](#13-components)
@@ -23,9 +23,17 @@ interface; a **scripted provider** replays recorded turns, so tests, samples and
 
 ## 1.1. Quick start
 
-Start this project locally or use the live demo below, then try run your own feedback using `curl` commands as shown in the sections below.
+Use the live demo (nothing to install) or start this project locally, then try your own feedback with the `curl` commands in 1.1.2.
 
-### 1.1.0. Local setup
+### 1.1.0. Live demo (no setup)
+
+- A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). 
+- Open `/docs` for the Swagger UI, click *Authorize* and paste the demo access token `wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`
+(it goes in the `X-API-Token` header; it only opens this demo, please do not share it); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
+at most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens. It runs on a small shared host, stores the reports you submit, and will be taken down after the review period,
+so please do not send real or sensitive data. If it is down or the daily cap is reached, everything works the same locally (next section).
+
+### 1.1.1. Local setup
 
 Requires only Docker with Compose v2. From the repository folder (`feedback-agent/`):
 
@@ -44,14 +52,6 @@ docker compose up --build        # API on http://localhost:8000 (Swagger UI at /
 Every `python -m feedback_agent ...` command in this README runs the same way inside the container: `docker compose run --rm app python -m feedback_agent <command>`
 (reports and traces are kept in a Docker volume between runs; `docker compose down -v` resets them). Without Docker you need Python 3.10+ and `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
 
-### 1.1.1. Live demo (no setup)
-
-- A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). 
-- Open `/docs` for the Swagger UI, click *Authorize* and paste the demo access token `wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`
-(it goes in the `X-API-Token` header; it only opens this demo, please do not share it); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
-at most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens. It runs on a small shared host, stores the reports you submit, and will be taken down after the review period,
-so please do not send real or sensitive data. If it is down or the daily cap is reached, everything works the same locally (below).
-
 ### 1.1.2. Try your own feedback (needs the Gemini key)
 
 The scripted provider only replays recorded turns, so free text needs the real model. The mock database has these customers (all in `data/seed/customers.csv`);
@@ -65,7 +65,17 @@ any other email is treated as an unknown sender (`not_found`, "unverified custom
 | `finance@fathom-labs.example` | Standard, one 299 USD invoice (2026-06-10) | refund policy v1 vs v2 (`received_at` 2026-06-20 vs 2026-07-05) |
 
 **HTTP API** (`docker compose up --build`, needs the key). The quickest way to try it by hand: open **http://localhost:8000/docs** (interactive Swagger UI), expand
-`POST /feedback`, click *Try it out*, paste a body such as the one below and *Execute*; then use `GET /reports` and `POST /reports/{id}/review` the same way. The same calls with `curl`:
+`POST /feedback`, click *Try it out*, paste a body such as the one below and *Execute*; then use `GET /reports` and `POST /reports/{id}/review` the same way. The same calls with `curl`.
+What each call does (they follow the order of a real session: submit, find the report in the queue, decide, inspect how it was produced):
+
+| Call | What it does |
+|---|---|
+| `GET /health` | Liveness check, always open (no token). |
+| `POST /feedback` | Submits **one** customer message and runs the whole pipeline synchronously (guard, classify, tool-calling agent, grounded report). Returns the finished report with its `report_id` and `trace_id`, status `pending_review`; takes several seconds because it calls the LLM. Body: `text`, `customer_email` (must be a mock customer, see above), `channel`, optional `received_at`. This is the only call that spends LLM tokens and the only one rate-limited. |
+| `GET /reports?status=pending_review` | The human review queue: a short summary of each report (id, category, urgency, confidence, whether it needs human triage). Omit `status` to list all; other values: `approved`, `overridden`, `rejected`, `executed`. |
+| `GET /reports/<report_id>` | One full report: classification, evidence cited, proposed actions with their basis, and the review history. |
+| `POST /reports/<report_id>/review` | The officer's decision on a pending report: `approve` (run the proposed actions), `override` (change category, urgency or actions via `overrides`, then run those) or `reject` (do nothing). Approved actions go to a **stub** executor that only records what it would call (no real refund is made). The first decision wins: repeating the same one is a harmless replay, a conflicting one gets `409`. |
+| `GET /traces/<trace_id>` | The step-by-step audit trail of that run (every LLM turn, tool call, validation and token count), to see why the report says what it says. |
 
 ```bash
 # ----------- local
@@ -79,11 +89,11 @@ export TOKEN=wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy
 
 curl -s -X POST $BASE/feedback -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' -d '{
   "text": "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate.",
-  "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # optional: "received_at": "2026-09-22T09:00:00Z"
-curl -s "$BASE/reports?status=pending_review" -H "X-API-Token: $TOKEN"        # the review queue
+  "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # 1) submit feedback -> returns report_id + trace_id (optional: "received_at": "2026-09-22T09:00:00Z")
+curl -s "$BASE/reports?status=pending_review" -H "X-API-Token: $TOKEN"        # 2) list reports waiting for an officer
 curl -s -X POST $BASE/reports/<report_id>/review -H "X-API-Token: $TOKEN" -H 'Content-Type: application/json' \
-     -d '{"decision": "approve", "actor": "me", "note": "ok"}'                 # approve | override | reject (stub executor)
-curl -s $BASE/traces/<trace_id> -H "X-API-Token: $TOKEN"                       # step-by-step trace
+     -d '{"decision": "approve", "actor": "me", "note": "ok"}'                 # 3) officer decides: approve | override | reject (stub executor)
+curl -s $BASE/traces/<trace_id> -H "X-API-Token: $TOKEN"                       # 4) audit trail of the run (use the trace_id from step 1)
 ```
 
 Without `received_at` the feedback is dated now; policies are chosen by that date and the mock invoices are from mid-2026, so use `received_at` to line up with them.
