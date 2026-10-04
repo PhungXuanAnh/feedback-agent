@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -61,20 +60,6 @@ def cmd_run(a: argparse.Namespace, s: Settings) -> int:
     return rc
 
 
-def cmd_ask(a: argparse.Namespace, s: Settings) -> int:
-    """Process one feedback typed on the command line (same pipeline, same review queue as `run`)."""
-    payload = {"text": a.text, "customer_email": a.email, "channel": a.channel}
-    if a.received_at:
-        payload["received_at"] = a.received_at
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "ask.json"
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        ns = argparse.Namespace(inputs=[str(path)], provider=a.provider, script=a.script, max_llm_turns=None,
-                                max_tool_calls=None, inject_llm_fault=None, inject_tool_fault=None, trace_dir=None,
-                                db=None, out=None, show_trace=a.show_trace)
-        return cmd_run(ns, s)
-
-
 def cmd_trace(a: argparse.Namespace, s: Settings) -> int:
     print(render_trace(load_trace(a.trace, s.trace_dir)))
     return 0
@@ -103,15 +88,6 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--out", help="directory for <input>.report.json")
     r.add_argument("--show-trace", action="store_true")
     r.set_defaults(fn=cmd_run)
-    k = sub.add_parser("ask", help="process one feedback typed on the command line")
-    k.add_argument("text", help="the customer's feedback text")
-    k.add_argument("--email", required=True, help="customer email (metadata); try ops@northwind-analytics.example")
-    k.add_argument("--channel", default="web_form", choices=["email", "web_form", "chat", "api"])
-    k.add_argument("--received-at", help="ISO time, e.g. 2026-09-22T09:00:00Z (default: now; it fixes which policies are in force)")
-    k.add_argument("--provider", help="gemini | scripted (default: LLM_PROVIDER)")
-    k.add_argument("--script", help="scripted provider: JSON file of turns")
-    k.add_argument("--show-trace", action="store_true")
-    k.set_defaults(fn=cmd_ask)
     t = sub.add_parser("trace", help="print a trace in readable form")
     t.add_argument("trace", help="trace id or .jsonl path")
     t.set_defaults(fn=cmd_trace)

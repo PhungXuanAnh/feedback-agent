@@ -31,33 +31,24 @@ any other email is treated as an unknown sender (`not_found`, "unverified custom
 | `ops@northwind-analytics.example` | Enterprise | outage / SLA |
 | `admin@bluepeak-labs.example` | Pro, one open webhook ticket | bugs, vague messages |
 | `billing@orchid-robotics.example` | Pro, duplicate 1200 USD invoices (2026-09-10) | duplicate charge and refund |
-| `finance@fathom-labs.example` | Standard, one 299 USD invoice (2026-06-10) | refund policy v1 vs v2 (`--received-at 2026-06-20` vs `2026-07-05`) |
+| `finance@fathom-labs.example` | Standard, one 299 USD invoice (2026-06-10) | refund policy v1 vs v2 (`received_at` 2026-06-20 vs 2026-07-05) |
 
-**Command line**
-
-```bash
-python -m feedback_agent ask "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate." \
-    --email billing@orchid-robotics.example --show-trace          # add --received-at 2026-09-22T09:00:00Z to pick the policy date
-python -m feedback_agent reports                                   # the review queue
-python -m feedback_agent show <report_id>                          # report + audit
-python -m feedback_agent review <report_id> approve --actor me     # or override / reject (prints the stub executor call)
-```
-
-**HTTP API** (`python -m feedback_agent serve`, docs at `/docs`)
+**HTTP API** (`python -m feedback_agent serve`). The quickest way to try it by hand: open **http://localhost:8000/docs** (interactive Swagger UI), expand
+`POST /feedback`, click *Try it out*, paste a body such as the one below and *Execute*; then use `GET /reports` and `POST /reports/{id}/review` the same way. The same calls with `curl`:
 
 ```bash
 curl -s -X POST localhost:8000/feedback -H 'Content-Type: application/json' -d '{
-  "text": "Our webhooks stopped firing yesterday and two customers complained.",
-  "customer_email": "admin@bluepeak-labs.example", "channel": "email"}'      # optional: "received_at": "2026-09-23T10:00:00Z"
-curl -s "localhost:8000/reports?status=pending_review"
+  "text": "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate.",
+  "customer_email": "billing@orchid-robotics.example", "channel": "email"}'   # optional: "received_at": "2026-09-22T09:00:00Z"
+curl -s "localhost:8000/reports?status=pending_review"                         # the review queue
 curl -s -X POST localhost:8000/reports/<report_id>/review -H 'Content-Type: application/json' \
-     -d '{"decision": "approve", "actor": "me", "note": "ok"}'               # approve | override | reject
-curl -s localhost:8000/traces/<trace_id>                                      # step-by-step trace
+     -d '{"decision": "approve", "actor": "me", "note": "ok"}'                 # approve | override | reject (stub executor)
+curl -s localhost:8000/traces/<trace_id>                                       # step-by-step trace
 ```
 
 Without `received_at` the feedback is dated now; policies are chosen by that date and the mock invoices are from mid-2026, so use `received_at` to line up with them.
 Reports and reviews are stored in SQLite (`data/feedback_agent.db`), traces in `traces/`.
-Other commands: `run <file.json>...` (feedback from JSON files), `trace <id>`, `samples`, `eval`, `seed`.
+Without a server: `python -m feedback_agent run <file.json>` (feedback from a JSON file), `reports` / `show <id>` / `review <id> approve|override|reject --actor you`, `trace <id>`, `samples`, `eval`, `seed`.
 
 | `.env` variable | Default | Meaning |
 |---|---|---|
