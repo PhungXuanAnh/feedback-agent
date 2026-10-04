@@ -1,4 +1,16 @@
-# Agentic Customer Feedback System
+- [1. Agentic Customer Feedback System](#1-agentic-customer-feedback-system)
+  - [1.1. Quick start](#11-quick-start)
+    - [1.1.1. Live demo (no setup)](#111-live-demo-no-setup)
+    - [1.1.2. Try your own feedback (needs the Gemini key)](#112-try-your-own-feedback-needs-the-gemini-key)
+  - [1.2. Architecture](#12-architecture)
+  - [1.3. Components](#13-components)
+  - [1.4. Evidence: samples and evaluation](#14-evidence-samples-and-evaluation)
+  - [1.5. Scaling the knowledge base (not built here)](#15-scaling-the-knowledge-base-not-built-here)
+  - [1.6. Layout and criteria](#16-layout-and-criteria)
+  - [1.7. Notes](#17-notes)
+
+
+# 1. Agentic Customer Feedback System
 
 Takes a customer's free-text feedback and produces a **grounded, structured report for a customer-support (CS) officer**:
 classify it, let an LLM query three data sources through real tool calls, check the report's citations and actions in code,
@@ -8,27 +20,32 @@ how it is built and where the evidence is.
 Python 3.10+, no agent framework (the loop is ~250 lines on a function-calling API). The LLM is **Gemini** behind a small provider
 interface; a **scripted provider** replays recorded turns, so tests, samples and the demo run **offline without an API key**.
 
-## Quick start
+## 1.1. Quick start
+
+Requires only Docker with Compose v2. From the repository folder (`feedback-agent/`):
 
 ```bash
-cd feedback-agent
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest                                   # offline
-python -m feedback_agent demo            # full run offline: report, trace, review queue, officer approval
+docker compose run --rm app pytest                              # the test suite, offline, no key needed
+docker compose run --rm app python -m feedback_agent demo       # full run offline: report, trace, review queue, officer approval
 ```
 
-For the real model: `cp .env.example .env` and set `GEMINI_API_KEY` (`LLM_API_KEY` is also accepted). Docker: `docker compose up --build`
-(API on :8000, health check; no key needed to start) or `docker compose run --rm app python -m feedback_agent demo`.
+For the real model, put your key in `.env` (`cp .env.example .env`, set `GEMINI_API_KEY`; `LLM_API_KEY` is also accepted) or export it, then start the API:
 
-### Live demo (no setup)
+```bash
+docker compose up --build        # API on http://localhost:8000 (Swagger UI at /docs), health check included
+```
+
+Every `python -m feedback_agent ...` command in this README runs the same way inside the container: `docker compose run --rm app python -m feedback_agent <command>`
+(reports and traces are kept in a Docker volume between runs; `docker compose down -v` resets them). Without Docker you need Python 3.10+ and `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
+
+### 1.1.1. Live demo (no setup)
 
 A hosted instance is available at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port). Open `/docs` for the Swagger UI, click *Authorize* and paste the access token I sent with the submission
 (it goes in the `X-API-Token` header); `/health` and `/docs` are open, every other call needs the token. Use the mock customers below. The demo is deliberately small and protected:
 at most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens. It runs on a small shared host, stores the reports you submit, and will be taken down after the review period,
 so please do not send real or sensitive data. If it is down or the daily cap is reached, everything works the same locally (below).
 
-### Try your own feedback (needs the Gemini key)
+### 1.1.2. Try your own feedback (needs the Gemini key)
 
 The scripted provider only replays recorded turns, so free text needs the real model. The mock database has these customers (all in `data/seed/customers.csv`);
 any other email is treated as an unknown sender (`not_found`, "unverified customer").
@@ -40,7 +57,7 @@ any other email is treated as an unknown sender (`not_found`, "unverified custom
 | `billing@orchid-robotics.example` | Pro, duplicate 1200 USD invoices (2026-09-10) | duplicate charge and refund |
 | `finance@fathom-labs.example` | Standard, one 299 USD invoice (2026-06-10) | refund policy v1 vs v2 (`received_at` 2026-06-20 vs 2026-07-05) |
 
-**HTTP API** (`python -m feedback_agent serve`). The quickest way to try it by hand: open **http://localhost:8000/docs** (interactive Swagger UI), expand
+**HTTP API** (`docker compose up --build`, needs the key). The quickest way to try it by hand: open **http://localhost:8000/docs** (interactive Swagger UI), expand
 `POST /feedback`, click *Try it out*, paste a body such as the one below and *Execute*; then use `GET /reports` and `POST /reports/{id}/review` the same way. The same calls with `curl`:
 
 ```bash
@@ -54,8 +71,8 @@ curl -s localhost:8000/traces/<trace_id>                                       #
 ```
 
 Without `received_at` the feedback is dated now; policies are chosen by that date and the mock invoices are from mid-2026, so use `received_at` to line up with them.
-Reports and reviews are stored in SQLite (`data/feedback_agent.db`), traces in `traces/`.
-Without a server: `python -m feedback_agent run <file.json>` (feedback from a JSON file), `reports` / `show <id>` / `review <id> approve|override|reject --actor you`, `trace <id>`, `samples`, `eval`, `seed`.
+Reports and reviews are stored in SQLite and traces as JSONL files, both in the Docker volume (locally without Docker: `data/feedback_agent.db` and `traces/`).
+Without the API server, run these as `docker compose run --rm app python -m feedback_agent <command>`: `run <file.json>` (feedback from a JSON file, e.g. `samples/inputs/01_enterprise_outage.json`), `reports`, `show <id>`, `review <id> approve|override|reject --actor you`, `trace <id>`, `samples`, `eval`, `seed`.
 
 | `.env` variable | Default | Meaning |
 |---|---|---|
@@ -67,7 +84,7 @@ Without a server: `python -m feedback_agent run <file.json>` (feedback from a JS
 | `DATABASE_PATH`, `TRACE_DIR` | `data/feedback_agent.db`, `traces/` | SQLite file, JSONL traces |
 | `API_TOKEN`, `RATE_LIMIT_PER_MIN`, `DAILY_REQUEST_LIMIT`, `DAILY_TOKEN_LIMIT`, `TRUST_PROXY` | unset (all protection off) | for a shared deployment: clients send header `X-API-Token`; per-IP rate limit on `POST /feedback`; daily request and token caps counted in SQLite; see [`deploy/DEPLOY.md`](deploy/DEPLOY.md) |
 
-## Architecture
+## 1.2. Architecture
 
 ```
 feedback ─► intake ─► injection guard ─► classify ─► agent loop (LLM + 3 tools) ─► report + validator ─► review queue
@@ -99,7 +116,7 @@ When the LLM calls `submit_report`, the evidence gate checks that all three sour
 Valid: code adds category, urgency, flags and confidence and saves the report for review. Invalid: the LLM gets the exact problems and one repair; still invalid: code rebuilds the report from validated data only.
 Every step writes a trace event. An officer's decision is validated by the same rules before the stub executor acts.
 
-## Components
+## 1.3. Components
 
 **Intake and injection guard.** Pydantic validation of text and metadata; regexes flag known injection patterns before the LLM sees the text (flags only; easy to evade, so never the only defence). Layered defences: role separation; escaped delimiters around customer text **and every tool result**;
 schema-forced output; read-only tools with allow-listed arguments; customer lookup locked to the sender; validator and review state machine decide what can happen. None is 100%, so damage is limited, not just detection attempted.
@@ -156,7 +173,7 @@ when an attempt that could have been billed has unknown usage (undecodable 200 b
 #14 report_generated         {"generated_by": "gemini", "confidence": "high", "actions": ["escalate_to_engineering", "escalate_to_human"], "counters": {"llm_turns": 2, "tool_calls": 3}}
 ```
 
-## Evidence: samples and evaluation
+## 1.4. Evidence: samples and evaluation
 
 - [`samples/`](samples/README.md): 5 inputs (happy path, ambiguous, unknown customer, abusive + injection, LLM/tool failure), each with report, trace and metadata from a **live Gemini** run and an **offline scripted** replay.
   Sample 5 is **not** written by Gemini: failures were injected on purpose (documented there).
@@ -175,13 +192,13 @@ when an attempt that could have been billed has unknown usage (undecodable 200 b
 - **Live findings:** Gemini 3 thinking tokens count against `maxOutputTokens`: at 2048 the long `submit_report` call was truncated or malformed on 2 of 14 cases. `MAX_OUTPUT_TOKENS=8192`, `LLM_THINKING_LEVEL=low` and one retry for malformed calls fixed it
   (14/14 normal; median latency about 13 s to 5 s). Saved live outputs use that configuration; later hardening changed validation and error handling, not prompts, and the stored reports still pass the current validator.
 
-## Scaling the knowledge base (not built here)
+## 1.5. Scaling the knowledge base (not built here)
 
 Built: effective-date and supersession filtering, keyword scoring, hard `top_k`, `not_found` as a first-class answer, citations checked against what was retrieved. For a large corpus: chunk by clause with title/section path and filterable metadata (validity, authority, scope);
 stable ids that exclude dates, every version its own row; keyword + vector search with reciprocal-rank fusion and an optional reranker; validity filter pushed into the query; deterministic conflict rules in code (higher authority > lower, specific > general, newer > older) with unresolved conflicts flagged to a human;
 caching with re-index invalidation; and recall@k measured separately from answer quality, including date-dependent cases.
 
-## Layout and criteria
+## 1.6. Layout and criteria
 
 ```
 feedback_agent/  pipeline.py · agent.py (loop, executor, caps) · validator.py · report.py · classify.py · tools.py · guard.py · hitl.py · api.py · cli.py
@@ -201,7 +218,7 @@ A new LLM provider is one class satisfying `LLMProvider` plus one line in `PROVI
 | Communication | this file and [`WRITEUP.md`](WRITEUP.md) |
 | Judgment | WRITEUP Q3; UI, auth, multi-turn, batch and real integrations left out |
 
-## Notes
+## 1.7. Notes
 
 Ideas reused from my earlier personal project "logilens" (a log-analytics assistant): the provider interface and fallback idea, converting a Pydantic JSON Schema to a Gemini function declaration (rewritten here), the keyword-rule fallback idea, JSONL audit logging.
 The tool loop, grounding, review flow, eval and usage tracking were written for this task; no other third-party code was copied.

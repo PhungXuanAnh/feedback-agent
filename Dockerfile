@@ -4,10 +4,11 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY feedback_agent ./feedback_agent
 # editable install keeps data/ and samples/ next to the code, where the app looks for them
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ".[dev]"
 COPY data ./data
 COPY samples ./samples
 COPY eval ./eval
+COPY tests ./tests
 RUN useradd -m app && mkdir -p /app/state && chown -R app /app
 USER app
 ENV DATABASE_PATH=/app/state/feedback_agent.db TRACE_DIR=/app/state/traces
