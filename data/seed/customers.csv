@@ -1,0 +1,12 @@
+id,email,name,tier,signup_date
+C-1001,ops@northwind-analytics.example,Northwind Analytics,enterprise,2023-02-14
+C-1002,admin@bluepeak-labs.example,Bluepeak Labs,pro,2024-05-02
+C-1003,it@harbor-data.example,Harbor Data Co,standard,2025-11-20
+C-1004,billing@orchid-robotics.example,Orchid Robotics,pro,2024-09-09
+C-1005,security@tessera-health.example,Tessera Health,enterprise,2022-08-01
+C-1006,finance@ledgerly.example,Ledgerly,standard,2026-03-12
+C-1007,cto@quanta-retail.example,Quanta Retail,pro,2025-01-15
+C-1008,platform@kestrel-logistics.example,Kestrel Logistics,enterprise,2023-10-30
+C-1009,hello@solstice-media.example,Solstice Media,standard,2025-06-01
+C-1010,eng@juniper-fintech.example,Juniper Fintech,pro,2024-02-20
+C-1011,finance@fathom-labs.example,Fathom Labs,standard,2025-01-10

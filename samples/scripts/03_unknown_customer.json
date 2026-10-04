@@ -1,0 +1,70 @@
+[
+ {
+  "tool_calls": [
+   {
+    "name": "classify_feedback",
+    "args": {
+     "category": "billing_issue",
+     "alternatives": [],
+     "sentiment": "negative",
+     "urgency": "medium",
+     "confidence": 0.9,
+     "rationale": "Unrecognised charge and refund request."
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "get_cs_guidelines",
+    "args": {
+     "category": "billing_issue"
+    }
+   },
+   {
+    "name": "lookup_customer",
+    "args": {
+     "email": "ghost@unknown-corp.example"
+    }
+   },
+   {
+    "name": "search_policies",
+    "args": {
+     "query": "refund charge money back",
+     "category": "billing_issue"
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "submit_report",
+    "args": {
+     "summary": "Customer says they were billed 450 USD last week for a plan they never signed up for and wants the money back. No customer record exists for this sender, so the customer is unverified and no invoice can be checked. Recommend asking for the account details before any refund is considered.",
+     "customer_context": {
+      "record_found": false
+     },
+     "cited_guidelines": [
+      "GL-BILL-01"
+     ],
+     "cited_policies": [
+      "POL-REF-02"
+     ],
+     "suggested_actions": [
+      {
+       "type": "request_more_info",
+       "params": {},
+       "basis": [
+        "GL-BILL-01"
+       ],
+       "rationale": "Sender and invoice cannot be verified."
+      }
+     ],
+     "draft_clarification_question": "Could you confirm the account email or customer id and the invoice number of the 450 USD charge?"
+    }
+   }
+  ]
+ }
+]

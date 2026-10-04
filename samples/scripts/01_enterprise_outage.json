@@ -1,0 +1,91 @@
+[
+ {
+  "tool_calls": [
+   {
+    "name": "classify_feedback",
+    "args": {
+     "category": "service_outage",
+     "alternatives": [
+      {
+       "category": "bug_report",
+       "confidence": 0.05
+      }
+     ],
+     "sentiment": "negative",
+     "urgency": "high",
+     "confidence": 0.95,
+     "rationale": "Dashboard and API return 503 for a whole team."
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "get_cs_guidelines",
+    "args": {
+     "category": "service_outage"
+    }
+   },
+   {
+    "name": "lookup_customer",
+    "args": {
+     "email": "ops@northwind-analytics.example"
+    }
+   },
+   {
+    "name": "search_policies",
+    "args": {
+     "query": "enterprise outage sla response escalation",
+     "category": "service_outage"
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "submit_report",
+    "args": {
+     "summary": "Customer reports 503 errors on nightly pipelines and the dashboard API since about 08:40 UTC, blocking their team before a noon deadline, and says this is the second outage this month. The record shows an Enterprise customer. The SLA policy sets a 1 hour first response for Enterprise and requires immediate escalation to on-call engineering; the guideline also asks to notify the account owner.",
+     "customer_context": {
+      "record_found": true,
+      "customer_id": "C-1001",
+      "tier": "enterprise"
+     },
+     "cited_guidelines": [
+      "GL-OUT-01"
+     ],
+     "cited_policies": [
+      "POL-SLA-01",
+      "POL-ESC-01"
+     ],
+     "suggested_actions": [
+      {
+       "type": "escalate_to_engineering",
+       "params": {
+        "target": "engineering_oncall"
+       },
+       "basis": [
+        "GL-OUT-01",
+        "POL-SLA-01",
+        "POL-ESC-01"
+       ],
+       "rationale": "Production outage for an Enterprise customer: escalate now to meet the 1 hour SLA."
+      },
+      {
+       "type": "escalate_to_human",
+       "params": {
+        "target": "account_owner"
+       },
+       "basis": [
+        "GL-OUT-01"
+       ],
+       "rationale": "Notify the account owner as the guideline requires."
+      }
+     ]
+    }
+   }
+  ]
+ }
+]

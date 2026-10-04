@@ -1,0 +1,89 @@
+[
+ {
+  "tool_calls": [
+   {
+    "name": "classify_feedback",
+    "args": {
+     "category": "unclear",
+     "alternatives": [
+      {
+       "category": "bug_report",
+       "confidence": 0.3
+      },
+      {
+       "category": "feature_request",
+       "confidence": 0.1
+      }
+     ],
+     "sentiment": "negative",
+     "urgency": "low",
+     "confidence": 0.4,
+     "rationale": "No concrete problem is described."
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "get_cs_guidelines",
+    "args": {
+     "category": "unclear"
+    }
+   },
+   {
+    "name": "lookup_customer",
+    "args": {
+     "email": "admin@bluepeak-labs.example"
+    }
+   },
+   {
+    "name": "search_policies",
+    "args": {
+     "query": "update issue support",
+     "category": "unclear"
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "submit_report",
+    "args": {
+     "summary": "Customer says things have been weird since the last update and asks someone to look into it, without naming a feature or error. The record shows a Pro customer with one open ticket about webhook retries, which may or may not be related. The category cannot be determined, so a human should triage and ask for details.",
+     "customer_context": {
+      "record_found": true,
+      "customer_id": "C-1002",
+      "tier": "pro"
+     },
+     "cited_guidelines": [
+      "GL-TRIAGE"
+     ],
+     "cited_policies": [],
+     "suggested_actions": [
+      {
+       "type": "request_more_info",
+       "params": {},
+       "basis": [
+        "GL-TRIAGE"
+       ],
+       "rationale": "Too vague to classify; ask which feature is affected."
+      },
+      {
+       "type": "escalate_to_human",
+       "params": {
+        "target": "cs_officer"
+       },
+       "basis": [
+        "GL-TRIAGE"
+       ],
+       "rationale": "Human triage of an unclear message."
+      }
+     ],
+     "draft_clarification_question": "Which feature or page is behaving unexpectedly since the last update, and what did you expect to see? Is it related to your open webhook retry ticket?"
+    }
+   }
+  ]
+ }
+]

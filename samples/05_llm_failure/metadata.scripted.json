@@ -1,0 +1,37 @@
+{
+  "sample": "05_llm_failure",
+  "title": "Failure: LLM and a tool fail, report degrades safely",
+  "mode": "scripted",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "trace_id": "tr_177d1ff599de",
+  "report_generated_by": "degraded_template",
+  "generated_at": "2026-10-04T08:14:16.188468+00:00",
+  "counters": {
+    "llm_turns": 1,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 2,
+    "provider_calls": 4,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 202
+  },
+  "fault_injection": {
+    "inject_llm_fault": 3,
+    "inject_tool_fault": [
+      "search_policies:1"
+    ]
+  },
+  "expectations_met": true,
+  "unmet_expectations": [],
+  "notes": "Replayed offline by ScriptedProvider with a hand-written script (samples/scripts). It shows the pipeline's behaviour, not LLM judgement; the live variant shows what Gemini decided."
+}

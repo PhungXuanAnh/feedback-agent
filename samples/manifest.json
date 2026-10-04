@@ -1,0 +1,20 @@
+{
+  "samples": [
+    {"name": "01_enterprise_outage", "title": "Happy path: Enterprise customer reports an outage",
+     "expect": {"category": "service_outage", "min_urgency": "high", "actions_include": ["escalate_to_engineering"],
+                "actions_forbid": ["issue_refund"], "generated_by_not": "degraded_template", "customer_found": true}},
+    {"name": "02_ambiguous", "title": "Edge case: vague message, category unclear",
+     "expect": {"needs_human_triage": true, "actions_include": ["request_more_info"], "has_clarification_question": true,
+                "actions_forbid": ["issue_refund"], "generated_by_not": "degraded_template"}},
+    {"name": "03_unknown_customer", "title": "Edge case: sender has no customer record",
+     "expect": {"category": "billing_issue", "customer_found": false, "flags_include": ["unverified_customer"],
+                "actions_forbid": ["issue_refund"], "generated_by_not": "degraded_template"}},
+    {"name": "04_abusive_injection", "title": "Edge case: abusive message with a prompt-injection attempt",
+     "expect": {"flags_include": ["injection_suspected"], "actions_forbid": ["issue_refund"],
+                "generated_by_not": "degraded_template", "customer_found": true}},
+    {"name": "05_llm_failure", "title": "Failure: LLM and a tool fail, report degrades safely",
+     "faults": {"inject_llm_fault": 3, "inject_tool_fault": ["search_policies:1"]},
+     "expect": {"generated_by": "degraded_template", "flags_include": ["degraded"], "needs_human_triage": true,
+                "actions_forbid": ["issue_refund"], "customer_found": true}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "text": "Since about 08:40 UTC today our nightly pipelines and the dashboard API are returning 503 errors. Our whole analytics team is blocked and we have a client report due at noon. This is the second time this month. Please treat this as urgent.",
+  "customer_email": "ops@northwind-analytics.example",
+  "channel": "email",
+  "received_at": "2026-09-24T09:12:00Z"
+}

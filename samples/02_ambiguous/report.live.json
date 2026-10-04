@@ -1,0 +1,83 @@
+{
+  "report_id": "rep_485678dda8",
+  "feedback_id": "fb_d72f1dadfb",
+  "trace_id": "tr_2b8f89fac402",
+  "status": "pending_review",
+  "summary": "The customer reports that 'things have been weird again since the last update' and requests an investigation, without providing specific details. The customer record confirms Bluepeak Labs (customer C-1002, pro tier) with an open ticket regarding webhook retries from 2026-09-18. No applicable company policy was found for unclear feedback. Following guideline GL-TRIAGE, we recommend escalating to a human officer and requesting specific clarification from the customer regarding the affected features or error messages.",
+  "category": "unclear",
+  "urgency": "medium",
+  "sentiment": "neutral",
+  "alternatives": [
+    {
+      "category": "bug_report",
+      "confidence": 0.35
+    },
+    {
+      "category": "service_outage",
+      "confidence": 0.1
+    }
+  ],
+  "secondary_categories": [
+    "bug_report",
+    "service_outage"
+  ],
+  "customer_context": {
+    "record_found": true,
+    "customer_id": "C-1002",
+    "tier": "pro",
+    "tenure_months": 28,
+    "open_tickets": 1
+  },
+  "cited_policies": [],
+  "cited_guidelines": [
+    "GL-TRIAGE"
+  ],
+  "suggested_actions": [
+    {
+      "type": "request_more_info",
+      "params": {},
+      "basis": [
+        "GL-TRIAGE"
+      ],
+      "rationale": "Customer feedback is ambiguous, so draft clarification questions for the officer to send."
+    },
+    {
+      "type": "escalate_to_human",
+      "params": {},
+      "basis": [
+        "GL-TRIAGE"
+      ],
+      "rationale": "Feedback category is unclear and requires human triage per guideline GL-TRIAGE."
+    }
+  ],
+  "draft_clarification_question": "Could you please provide more details on what specific behavior or features seem weird or broken since the update? Any error messages, screenshots, or affected endpoints would be very helpful.",
+  "flags": [
+    "needs_human_triage",
+    "no_applicable_policy",
+    "urgency_uncertain"
+  ],
+  "needs_human_triage": true,
+  "confidence_score": 0.75,
+  "confidence_level": "low",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "gemini",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "as_of": "2026-09-23",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "prompt_tokens": 6052,
+    "output_tokens": 653,
+    "cost_usd": "unknown",
+    "elapsed_ms": 6028
+  },
+  "created_at": "2026-10-04T04:10:50.071288+00:00"
+}

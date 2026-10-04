@@ -1,0 +1,69 @@
+{
+  "report_id": "rep_4ca52b4bbd",
+  "feedback_id": "fb_3f4101833e",
+  "trace_id": "tr_11a7e31060e4",
+  "status": "pending_review",
+  "summary": "Customer says they were billed 450 USD last week for an unauthorized plan and requested a refund. Customer lookup found no record for ghost@unknown-corp.example, leaving the sender unverified and with no invoice on file. Under guideline GL-BILL-01, refunds require verifying the customer record and invoice. Propose requesting invoice and account details, then escalating to a human officer.",
+  "category": "billing_issue",
+  "urgency": "high",
+  "sentiment": "negative",
+  "alternatives": [],
+  "secondary_categories": [],
+  "customer_context": {
+    "record_found": false,
+    "note": "No customer record for this sender: unverified customer, tier unknown"
+  },
+  "cited_policies": [
+    "POL-DUP-01"
+  ],
+  "cited_guidelines": [
+    "GL-BILL-01"
+  ],
+  "suggested_actions": [
+    {
+      "type": "request_more_info",
+      "params": {},
+      "basis": [
+        "GL-BILL-01",
+        "POL-DUP-01"
+      ],
+      "rationale": "Customer is unverified with no matching account or invoice record found. Additional billing details are required to locate the transaction."
+    },
+    {
+      "type": "escalate_to_human",
+      "params": {},
+      "basis": [
+        "GL-BILL-01"
+      ],
+      "rationale": "Escalate to a human CS officer to handle the dispute and verify customer identity once details are provided."
+    }
+  ],
+  "draft_clarification_question": "Could you please provide the invoice number, account details, or payment transaction identifier associated with the 450 USD charge so we can locate your account and investigate?",
+  "flags": [
+    "unverified_customer"
+  ],
+  "needs_human_triage": false,
+  "confidence_score": 0.83,
+  "confidence_level": "medium",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "gemini",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "as_of": "2026-09-25",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "prompt_tokens": 6516,
+    "output_tokens": 625,
+    "cost_usd": "unknown",
+    "elapsed_ms": 6034
+  },
+  "created_at": "2026-10-04T04:10:56.384026+00:00"
+}

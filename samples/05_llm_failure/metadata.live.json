@@ -1,0 +1,35 @@
+{
+  "sample": "05_llm_failure",
+  "title": "Failure: LLM and a tool fail, report degrades safely",
+  "mode": "live",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "trace_id": "tr_8a2fcfd4c569",
+  "report_generated_by": "degraded_template",
+  "generated_at": "2026-10-04T04:11:07.312569+00:00",
+  "counters": {
+    "llm_turns": 1,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 2,
+    "prompt_tokens": 3258,
+    "output_tokens": 130,
+    "cost_usd": "unknown",
+    "elapsed_ms": 3433
+  },
+  "fault_injection": {
+    "inject_llm_fault": 3,
+    "inject_tool_fault": [
+      "search_policies:1"
+    ]
+  },
+  "expectations_met": true,
+  "unmet_expectations": [],
+  "notes": "NOT written by Gemini. Gemini was tried: it classified the message and made the first agent turn (tool calls succeeded). Failures were then injected on purpose (not a real outage): every LLM call from call #3 on raised a transient error (retried once, failed again), and search_policies failed once (retried automatically, then succeeded). The report was built by the degraded template from the results that had already succeeded."
+}

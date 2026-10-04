@@ -1,0 +1,71 @@
+{
+  "report_id": "rep_659ac74aaf",
+  "feedback_id": "fb_182312d4b2",
+  "trace_id": "tr_177d1ff599de",
+  "status": "pending_review",
+  "summary": "Automatic fallback report (LLM unavailable after retry); no LLM analysis. Classified as billing_issue (urgency medium, sentiment negative). Customer says: \"I was charged twice on 2026-09-10, 1200 USD each time, for the same subscription. Please refund the duplicate payment.\". Context: customer record found, tier pro. Guideline retrieved: GL-BILL-01. Policies retrieved, not assessed: POL-DUP-01, POL-REF-02, POL-REF-03.",
+  "category": "billing_issue",
+  "urgency": "medium",
+  "sentiment": "negative",
+  "alternatives": [],
+  "secondary_categories": [],
+  "customer_context": {
+    "record_found": true,
+    "customer_id": "C-1004",
+    "tier": "pro",
+    "tenure_months": 24,
+    "open_tickets": 0
+  },
+  "cited_policies": [
+    "POL-DUP-01",
+    "POL-REF-02",
+    "POL-REF-03"
+  ],
+  "cited_guidelines": [
+    "GL-BILL-01",
+    "GL-TRIAGE"
+  ],
+  "suggested_actions": [
+    {
+      "type": "escalate_to_human",
+      "params": {
+        "target": "cs_officer"
+      },
+      "basis": [
+        "GL-TRIAGE"
+      ],
+      "rationale": "Human review needed: LLM unavailable after retry"
+    }
+  ],
+  "flags": [
+    "degraded",
+    "llm_unavailable",
+    "needs_human_triage"
+  ],
+  "needs_human_triage": true,
+  "confidence_score": 0.65,
+  "confidence_level": "low",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "degraded_template",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "as_of": "2026-09-22",
+  "counters": {
+    "llm_turns": 1,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 2,
+    "provider_calls": 4,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 202
+  },
+  "created_at": "2026-10-04T08:14:16.154105+00:00"
+}

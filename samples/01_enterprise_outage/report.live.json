@@ -1,0 +1,84 @@
+{
+  "report_id": "rep_1289a80b12",
+  "feedback_id": "fb_f222d03930",
+  "trace_id": "tr_5ce00e99becd",
+  "status": "pending_review",
+  "summary": "Customer reports that since about 08:40 UTC on 2026-09-24, their nightly pipelines and dashboard API return 503 errors, blocking their team before a noon deadline. Customer record confirms Enterprise tier status (C-1001). Under GL-OUT-01, POL-ESC-01, and POL-SLA-01, production outages affecting Enterprise customers require immediate escalation to on-call engineering and notification of the account owner.",
+  "category": "service_outage",
+  "urgency": "critical",
+  "sentiment": "negative",
+  "alternatives": [
+    {
+      "category": "bug_report",
+      "confidence": 0.1
+    }
+  ],
+  "secondary_categories": [
+    "bug_report"
+  ],
+  "customer_context": {
+    "record_found": true,
+    "customer_id": "C-1001",
+    "tier": "enterprise",
+    "tenure_months": 43,
+    "open_tickets": 0
+  },
+  "cited_policies": [
+    "POL-ESC-01",
+    "POL-SLA-01"
+  ],
+  "cited_guidelines": [
+    "GL-OUT-01"
+  ],
+  "suggested_actions": [
+    {
+      "type": "escalate_to_engineering",
+      "params": {
+        "target": "engineering_oncall"
+      },
+      "basis": [
+        "GL-OUT-01",
+        "POL-ESC-01",
+        "POL-SLA-01"
+      ],
+      "rationale": "Guideline GL-OUT-01 and policies POL-ESC-01 and POL-SLA-01 require immediate escalation of production outages affecting Enterprise customers to on-call engineering."
+    },
+    {
+      "type": "escalate_to_human",
+      "params": {
+        "target": "account_owner"
+      },
+      "basis": [
+        "GL-OUT-01",
+        "POL-ESC-01",
+        "POL-SLA-01"
+      ],
+      "rationale": "Guideline GL-OUT-01 states to notify the account owner for Enterprise customers facing service outage."
+    }
+  ],
+  "flags": [],
+  "needs_human_triage": false,
+  "confidence_score": 0.9,
+  "confidence_level": "high",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "gemini",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "as_of": "2026-09-24",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "prompt_tokens": 6737,
+    "output_tokens": 532,
+    "cost_usd": "unknown",
+    "elapsed_ms": 4778
+  },
+  "created_at": "2026-10-04T04:10:43.754375+00:00"
+}

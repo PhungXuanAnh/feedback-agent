@@ -1,0 +1,83 @@
+{
+  "report_id": "rep_6c77eeb906",
+  "feedback_id": "fb_1c7db57543",
+  "trace_id": "tr_4c5d77f7ef2c",
+  "status": "pending_review",
+  "summary": "Customer says things have been weird since the last update and asks someone to look into it, without naming a feature or error. The record shows a Pro customer with one open ticket about webhook retries, which may or may not be related. The category cannot be determined, so a human should triage and ask for details.",
+  "category": "unclear",
+  "urgency": "medium",
+  "sentiment": "negative",
+  "alternatives": [
+    {
+      "category": "bug_report",
+      "confidence": 0.3
+    },
+    {
+      "category": "feature_request",
+      "confidence": 0.1
+    }
+  ],
+  "secondary_categories": [],
+  "customer_context": {
+    "record_found": true,
+    "customer_id": "C-1002",
+    "tier": "pro",
+    "tenure_months": 28,
+    "open_tickets": 1
+  },
+  "cited_policies": [],
+  "cited_guidelines": [
+    "GL-TRIAGE"
+  ],
+  "suggested_actions": [
+    {
+      "type": "request_more_info",
+      "params": {},
+      "basis": [
+        "GL-TRIAGE"
+      ],
+      "rationale": "Too vague to classify; ask which feature is affected."
+    },
+    {
+      "type": "escalate_to_human",
+      "params": {
+        "target": "cs_officer"
+      },
+      "basis": [
+        "GL-TRIAGE"
+      ],
+      "rationale": "Human triage of an unclear message."
+    }
+  ],
+  "draft_clarification_question": "Which feature or page is behaving unexpectedly since the last update, and what did you expect to see? Is it related to your open webhook retry ticket?",
+  "flags": [
+    "needs_human_triage",
+    "urgency_uncertain"
+  ],
+  "needs_human_triage": true,
+  "confidence_score": 0.4,
+  "confidence_level": "low",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "scripted",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "as_of": "2026-09-23",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "provider_calls": 3,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 2
+  },
+  "created_at": "2026-10-04T08:14:15.576026+00:00"
+}

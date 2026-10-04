@@ -1,0 +1,46 @@
+[
+ {
+  "tool_calls": [
+   {
+    "name": "classify_feedback",
+    "args": {
+     "category": "billing_issue",
+     "alternatives": [],
+     "sentiment": "negative",
+     "urgency": "medium",
+     "confidence": 0.95,
+     "rationale": "Duplicate charge, refund requested."
+    }
+   }
+  ]
+ },
+ {
+  "tool_calls": [
+   {
+    "name": "get_cs_guidelines",
+    "args": {
+     "category": "billing_issue"
+    }
+   },
+   {
+    "name": "lookup_customer",
+    "args": {
+     "email": "billing@orchid-robotics.example"
+    }
+   },
+   {
+    "name": "search_policies",
+    "args": {
+     "query": "duplicate charge refund",
+     "category": "billing_issue"
+    }
+   }
+  ]
+ },
+ {
+  "error": "transient"
+ },
+ {
+  "error": "transient"
+ }
+]

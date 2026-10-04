@@ -1,0 +1,62 @@
+{
+  "report_id": "rep_ce370f8b41",
+  "feedback_id": "fb_ed1a8a7715",
+  "trace_id": "tr_57ff6fbeb0d1",
+  "status": "pending_review",
+  "summary": "Customer says they were billed 450 USD last week for a plan they never signed up for and wants the money back. No customer record exists for this sender, so the customer is unverified and no invoice can be checked. Recommend asking for the account details before any refund is considered.",
+  "category": "billing_issue",
+  "urgency": "medium",
+  "sentiment": "negative",
+  "alternatives": [],
+  "secondary_categories": [],
+  "customer_context": {
+    "record_found": false,
+    "note": "No customer record for this sender: unverified customer, tier unknown"
+  },
+  "cited_policies": [
+    "POL-REF-02"
+  ],
+  "cited_guidelines": [
+    "GL-BILL-01"
+  ],
+  "suggested_actions": [
+    {
+      "type": "request_more_info",
+      "params": {},
+      "basis": [
+        "GL-BILL-01"
+      ],
+      "rationale": "Sender and invoice cannot be verified."
+    }
+  ],
+  "draft_clarification_question": "Could you confirm the account email or customer id and the invoice number of the 450 USD charge?",
+  "flags": [
+    "unverified_customer"
+  ],
+  "needs_human_triage": false,
+  "confidence_score": 0.75,
+  "confidence_level": "medium",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "scripted",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "as_of": "2026-09-25",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "provider_calls": 3,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 2
+  },
+  "created_at": "2026-10-04T08:14:15.699999+00:00"
+}

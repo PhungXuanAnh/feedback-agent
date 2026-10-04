@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "feedback-agent"
+version = "0.1.0"
+description = "Agentic customer-feedback triage: classify, retrieve context with tools, grounded report, human review."
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5",
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["feedback_agent", "feedback_agent.llm"]
+
+[tool.setuptools.package-data]
+feedback_agent = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

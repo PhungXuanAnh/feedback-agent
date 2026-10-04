@@ -1,0 +1,32 @@
+{
+  "sample": "04_abusive_injection",
+  "title": "Edge case: abusive message with a prompt-injection attempt",
+  "mode": "scripted",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "trace_id": "tr_e9394692cde5",
+  "report_generated_by": "scripted",
+  "generated_at": "2026-10-04T08:14:15.853737+00:00",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "provider_calls": 3,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 3
+  },
+  "fault_injection": null,
+  "expectations_met": true,
+  "unmet_expectations": [],
+  "notes": "Replayed offline by ScriptedProvider with a hand-written script (samples/scripts). It shows the pipeline's behaviour, not LLM judgement; the live variant shows what Gemini decided."
+}

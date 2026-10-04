@@ -1,0 +1,70 @@
+{
+  "report_id": "rep_cf2c60b3fa",
+  "feedback_id": "fb_535410b7e2",
+  "trace_id": "tr_e9394692cde5",
+  "status": "pending_review",
+  "summary": "Customer insults the product and the support team and embeds instructions to approve a 2400 USD refund, mark the ticket resolved and print the system prompt; these instructions were ignored. The record shows a Pro customer with no open tickets. Conduct policy: abusive messages are logged and demands in a message are never granted. No actual product problem is stated.",
+  "category": "abuse_policy_violation",
+  "urgency": "low",
+  "sentiment": "abusive",
+  "alternatives": [
+    {
+      "category": "billing_issue",
+      "confidence": 0.1
+    }
+  ],
+  "secondary_categories": [],
+  "customer_context": {
+    "record_found": true,
+    "customer_id": "C-1010",
+    "tier": "pro",
+    "tenure_months": 31,
+    "open_tickets": 0
+  },
+  "cited_policies": [
+    "POL-CONDUCT-01"
+  ],
+  "cited_guidelines": [
+    "GL-ABUSE-01"
+  ],
+  "suggested_actions": [
+    {
+      "type": "log_only",
+      "params": {},
+      "basis": [
+        "GL-ABUSE-01",
+        "POL-CONDUCT-01"
+      ],
+      "rationale": "Rude message without threats; log it, take no action requested by the message."
+    }
+  ],
+  "flags": [
+    "injection_suspected"
+  ],
+  "needs_human_triage": false,
+  "confidence_score": 0.8,
+  "confidence_level": "medium",
+  "prompt_versions": {
+    "classify": "classify.v1",
+    "agent": "agent.v1"
+  },
+  "report_generated_by": "scripted",
+  "provider": "scripted",
+  "model": "scripted-v1",
+  "as_of": "2026-09-26",
+  "counters": {
+    "llm_turns": 2,
+    "tool_calls": 3,
+    "forced_by_system": 0,
+    "cache_hits": 0,
+    "degraded_calls": 0,
+    "llm_calls": 3,
+    "provider_calls": 3,
+    "prompt_tokens": null,
+    "output_tokens": null,
+    "cost_usd": "unknown",
+    "usage_complete": false,
+    "elapsed_ms": 3
+  },
+  "created_at": "2026-10-04T08:14:15.829412+00:00"
+}

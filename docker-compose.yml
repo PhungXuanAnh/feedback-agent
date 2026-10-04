@@ -1,0 +1,14 @@
+# One service. The API starts without a key (health check passes); POST /feedback needs GEMINI_API_KEY.
+# Offline demo, no key at all:  docker compose run --rm app python -m feedback_agent demo
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.8-flash}
+      LLM_THINKING_LEVEL: ${LLM_THINKING_LEVEL:-low}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes: ["state:/app/state"]
+volumes:
+  state: {}
