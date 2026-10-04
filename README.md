@@ -23,7 +23,7 @@ interface; a **scripted provider** replays recorded turns, so tests, samples and
 
 ## 1.1. Quick start
 
-Use the live demo (nothing to install) or start this project locally, then try your own feedback with the `curl` commands in 1.1.2.
+Use the live demo (nothing to install) or start this project locally, then try your own feedback with the `curl` commands in 1.1.2. or using swagger UI
 
 ### 1.1.0. Live demo (no setup)
 
