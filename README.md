@@ -39,12 +39,11 @@ a **scripted provider** replays recorded turns, so the tests, the samples and th
 
 ### 1.1.1. Hosted demo (no setup, no key)
 
-A hosted instance runs at **http://feedback-agent.xuananh1.site:8898** (plain HTTP, include the port) with its own Gemini key, so you do not need one.
+A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (plain HTTP, include the port) with its own Gemini key, so you do not need one.
 
 - **Token.** `/health` and `/docs` are open; every other call needs the header `X-API-Token: wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`. This token only opens the demo; please do not share it.
 - **Swagger UI.** Open `/docs`, click *Authorize*, paste the token, then use *Try it out* on `POST /feedback`.
 - **Limits.** At most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens (checked before each request, so in-flight requests can exceed them: not hard billing caps).
-- **Please note.** A small shared host that stores what you submit and will be taken down after the review period; send no real or sensitive data. If it is down or a cap is reached, run it locally (1.1.3).
 
 **Try your own feedback.** The mock database has four customers (`data/seed/customers.csv`). Use a listed address for a known customer; any other address demonstrates the unknown-customer path (`not_found`, "unverified customer").
 
@@ -278,7 +277,7 @@ Built: effective-date and supersession filtering, keyword scoring, hard `top_k`,
 | Communication | this file, [`docs/DESIGN.md`](docs/DESIGN.md) and [`WRITEUP.md`](WRITEUP.md) |
 | Judgment | `WRITEUP.md` Q3; UI, auth, multi-turn, batch and real integrations left out |
 
-**Credits.** Ideas reused from my earlier personal project "logilens" (a log-analytics assistant): the provider interface and fallback idea, converting a Pydantic JSON Schema to a Gemini function declaration (rewritten here), the keyword-rule fallback idea, JSONL audit logging.
+**Credits.** Ideas reused from my earlier personal project https://github.com/PhungXuanAnh/logilens (a log-analytics assistant): the provider interface and fallback idea, converting a Pydantic JSON Schema to a Gemini function declaration (rewritten here), the keyword-rule fallback idea, JSONL audit logging.
 The tool loop, grounding, review flow, eval and usage tracking were written for this task; no other third-party code was copied.
 
-**AI assistance.** I used AI tools for implementation, tests and documentation. The architecture and design decisions are mine, and I reviewed and verified the results (tests, live runs and the eval above).
+**AI assistance.** I used AI tools for assisting me do this assignment. The architecture and design decisions are mine, and I reviewed and verified the results (implementation, tests, live runs and the eval above).
