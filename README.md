@@ -42,7 +42,7 @@ a **scripted provider** replays hand-written tool-call sequences, so the tests, 
 A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (plain HTTP, include the port) with its own Gemini key, so you do not need one.
 
 - **Token.** `/health` and `/docs` are open; every other call needs the header `X-API-Token: wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`. This token only opens the demo; please do not share it.
-- **Swagger UI.** Open `/docs`, click *Authorize*, paste the token, then use *Try it out* on `POST /feedback`.
+- **Swagger UI.** Open `/docs`, click *Authorize*, paste the token, open `POST /feedback`, click *Try it out*, paste the example JSON from the curl step below (Swagger's default body has `customer_email: "string"`, which is not a valid address) and click *Execute*.
 - **Limits.** At most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens (checked before each request, so in-flight requests can exceed them: not hard billing caps).
 
 **Try your own feedback.** The mock database contains 11 customers (`data/seed/customers.csv`); four useful examples are listed below. An address absent from `data/seed/customers.csv` demonstrates the unknown-customer path (`not_found`, "unverified customer").

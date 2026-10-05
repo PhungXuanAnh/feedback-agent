@@ -60,6 +60,7 @@ A failed check gives the LLM a specific message and one repair; still failing, t
 
 It proves that claims have a basis, not that a conclusion is true; that is the officer's job. "Money figure in the feedback" is a small heuristic (`$N`, `N USD`, or a number right after a payment word; never a number followed by a time unit, part of a date or an id).
 Confidence is computed by code from the classifier's confidence minus penalties (unverified customer, no policy, injection signs, step cap, degradation); triage, degradation or an unverified sender can never be "high". It is a heuristic, not a calibrated probability.
+`confidence_score` is that number before any cap; `confidence_level` is the label after it. A run that needs human triage, degraded, failed grounding, hit the step cap or lacks a required source is forced to `low`, so a report can show a score such as 0.75 with level `low` (this is intentional).
 
 ## Human review
 
