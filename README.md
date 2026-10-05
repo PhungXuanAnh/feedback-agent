@@ -43,7 +43,7 @@ A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (pla
 
 ![](images/swagger.png)
 
-- **Token.** `/health` and `/docs` are open; every other call needs the header `X-API-Token: wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy`. This token only opens the demo; please do not share it.
+- **Token.** `/health` and `/docs` are open; every other call needs the header `X-API-Token: <token from the submission email>`. The token only opens the demo; please do not share it.
 - **Swagger UI.** Open `/docs`, click *Authorize*, paste the token, open `POST /feedback`, click *Try it out*, paste the example JSON from the curl step below (Swagger's default body has `customer_email: "string"`, which is not a valid address) and click *Execute*.
 - **Limits.** At most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens (checked before each request, so in-flight requests can exceed them: not hard billing caps).
 
@@ -60,7 +60,7 @@ The same four calls work against the hosted demo and a local server (set `BASE` 
 
 ```bash
 export BASE=http://feedback-agent.xuananh1.site:8898     # local server: http://localhost:8000
-export TOKEN=wB8ytvZzWzbU0zex4Av8Hvcw2te81vSy            # local server: any value
+export TOKEN='<token from the submission email>'         # local server: any value
 
 # 1) Submit one feedback. You choose the values: text, customer_email (a listed address), channel (email | web_form | chat | api) and
 #    received_at (pins the date: policies are chosen by it and the mock invoices are from mid-2026; default now).
