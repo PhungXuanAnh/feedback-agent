@@ -4,9 +4,9 @@ Takes a customer's free-text feedback and produces a **grounded, structured repo
 lets an LLM query three data sources through real tool calls, checks the report's citations and actions in code, and parks the result in a human review queue.
 
 Python 3.10+, no agent framework (the loop is ~250 lines on a function-calling API). The LLM is **Gemini** behind a small provider interface;
-a **scripted provider** replays recorded turns, so the tests, the samples and the offline demo run **without an API key**.
+a **scripted provider** replays hand-written tool-call sequences, so the tests, the samples and the offline demo run **without an API key**.
 
-**Quick links:** [Hosted demo](#111-hosted-demo-no-setup-no-key) · [Sample outputs](#12-sample-outputs) · [Design write-up (`WRITEUP.md`)](WRITEUP.md) · [Design details (`docs/DESIGN.md`)](docs/DESIGN.md)
+**Quick links:** [Hosted demo](#111-hosted-demo-no-setup-no-key) · [Sample outputs](#12-sample-outputs) · [Evaluation criteria](#18-criteria-map-credits-and-ai-assistance) · [Design write-up (`WRITEUP.md`)](WRITEUP.md) · [Design details (`docs/DESIGN.md`)](docs/DESIGN.md)
 
 - [1. Agentic Customer Feedback System](#1-agentic-customer-feedback-system)
   - [1.1. Quick start](#11-quick-start)
@@ -34,8 +34,8 @@ a **scripted provider** replays recorded turns, so the tests, the samples and th
 
 ## 1.1. Quick start
 
-- Three ways, from least to most effort: the **hosted demo** (nothing to install), the **offline demo** (Docker, no key) and a **local server** with your own Gemini key. Recommend to use curl for testing the API as in the following section.
-- Free-text feedback needs the real model, so the offline demo only replays recorded turns. 
+- Three ways, from least to most effort: the **hosted demo** (nothing to install), the **offline demo** (Docker, no key) and a **local server** with your own Gemini key. Use the curl examples below to test the API.
+- Free-text feedback needs the real model, so the offline demo only replays hand-written tool-call sequences. 
 
 ### 1.1.1. Hosted demo (no setup, no key)
 
@@ -45,7 +45,7 @@ A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (pla
 - **Swagger UI.** Open `/docs`, click *Authorize*, paste the token, then use *Try it out* on `POST /feedback`.
 - **Limits.** At most 6 requests per minute per client on `POST /feedback`, and shared daily caps of 60 reports and 600k tokens (checked before each request, so in-flight requests can exceed them: not hard billing caps).
 
-**Try your own feedback.** The mock database has four customers (`data/seed/customers.csv`). Use a listed address for a known customer; any other address demonstrates the unknown-customer path (`not_found`, "unverified customer").
+**Try your own feedback.** The mock database contains 11 customers (`data/seed/customers.csv`); four useful examples are listed below. An address absent from `data/seed/customers.csv` demonstrates the unknown-customer path (`not_found`, "unverified customer").
 
 | Email | Customer | Good for |
 |---|---|---|
@@ -93,7 +93,7 @@ docker compose run --rm app python -m feedback_agent demo   # full run: report, 
 ```
 
 The demo uses the scripted provider, so it shows the pipeline behaviour, not LLM judgement; the live Gemini outputs are in [1.2](#12-sample-outputs).
-Reports and traces are kept in a Docker volume between runs (`docker compose down -v` resets them). Without Docker: Python 3.10+, `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
+The offline demo uses temporary state and deletes it on exit; the API server persists reports and traces in the Docker volume (`docker compose down -v` resets it). Without Docker: Python 3.10+, `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
 
 ### 1.1.3. Local server with your Gemini key
 
@@ -283,7 +283,7 @@ Built: effective-date and supersession filtering, keyword scoring, hard `top_k`,
 |---|---|
 | Agent design | [1.3](#13-architecture) and [1.4.4](#144-agent-loop-and-step-caps); [`agent.py`](feedback_agent/agent.py); [`WRITEUP.md` Q1](WRITEUP.md#1-why-did-i-structure-the-agent-this-way); traces of samples [1](samples/01_enterprise_outage/) and [2](samples/02_ambiguous/) show the LLM choosing calls |
 | Grounding | [1.4.5](#145-report-and-grounding-validator); [`validator.py`](feedback_agent/validator.py), [`report.py`](feedback_agent/report.py), [`tests/test_validator.py`](tests/test_validator.py); eval "fabricated references" ([`eval/RESULTS.md`](eval/RESULTS.md)); `suggested_action.basis` in [`schemas.py`](feedback_agent/schemas.py) |
-| Tool use | [1.4.3](#143-data-sources-and-tools); [`tools.py`](feedback_agent/tools.py) (typed args, found/not_found/error); `tool_call`/`tool_result` events in the [traces](docs/DESIGN.md#observability-and-cost-tracking) |
+| Tool use | [1.4.3](#143-data-sources-and-tools); [`tools.py`](feedback_agent/tools.py) (typed args, found/not_found/error); `tool_call`/`tool_result` events in the [live trace of sample 1](samples/01_enterprise_outage/trace.live.jsonl) |
 | Robustness | [1.4.7](#147-failure-behaviour); [`tests/test_robustness.py`](tests/test_robustness.py); samples [2](samples/02_ambiguous/), [3](samples/03_unknown_customer/), [5](samples/05_llm_failure/) |
 | Code quality | small modules ([layout in 1.6.3](#163-project-layout)), typed schemas, no framework, short [tests](tests/) |
 | Communication | this file, [`docs/DESIGN.md`](docs/DESIGN.md) and [`WRITEUP.md`](WRITEUP.md) |
@@ -292,4 +292,4 @@ Built: effective-date and supersession filtering, keyword scoring, hard `top_k`,
 **Credits.** Ideas reused from my earlier personal project https://github.com/PhungXuanAnh/logilens (a log-analytics assistant): the provider interface and fallback idea, converting a Pydantic JSON Schema to a Gemini function declaration (rewritten here), the keyword-rule fallback idea, JSONL audit logging.
 The tool loop, grounding, review flow, eval and usage tracking were written for this task; no other third-party code was copied.
 
-**AI assistance.** I used AI tools for assisting me do this assignment. The architecture and design decisions are mine, and I reviewed and verified the results (implementation, tests, live runs and the eval above).
+**AI assistance.** I used AI tools to assist with this assignment. The architecture and design decisions are mine, and I reviewed and verified the results (implementation, tests, live runs and the eval above).
