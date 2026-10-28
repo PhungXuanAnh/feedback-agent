@@ -1,5 +1,7 @@
 # 1. Agentic Customer Feedback System
 
+[Domain recovery and hostname migration](docs/domain-recovery.md) · Owner inventory: `~/Dropbox/Work/infrastructure/domains/README.md`
+
 Takes a customer's free-text feedback and produces a **grounded, structured report for a customer-support (CS) officer**: it classifies the message,
 lets an LLM query three data sources through real tool calls, checks the report's citations and actions in code, and parks the result in a human review queue.
 
