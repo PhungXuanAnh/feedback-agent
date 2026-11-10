@@ -33,17 +33,32 @@ def make_ctx(store, kb):
 # ---------------------------------------------------------------- agent helpers
 from datetime import datetime, timezone  # noqa: E402
 
+from feedback_agent import apiguard, hitl, schemas  # noqa: E402
 from feedback_agent.config import Settings  # noqa: E402
 from feedback_agent.llm import ScriptedProvider  # noqa: E402
 from feedback_agent.pipeline import FeedbackPipeline  # noqa: E402
 from feedback_agent.schemas import Feedback  # noqa: E402
 
+NOW = datetime(2026, 9, 22, 9, tzinfo=timezone.utc)
 DUP_TEXT = "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate payment."
 DUP_EMAIL = "billing@orchid-robotics.example"
 
 
+class FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW
+
+
+@pytest.fixture(autouse=True)
+def frozen_now(monkeypatch):
+    # policy windows are counted from "now", so a real clock makes tests start failing as the seed data ages
+    for module in (schemas, apiguard, hitl):
+        monkeypatch.setattr(module, "datetime", FrozenDatetime)
+
+
 def fb(text=DUP_TEXT, email=DUP_EMAIL, **kw):
-    return Feedback(text=text, customer_email=email, received_at=datetime(2026, 9, 22, 9, tzinfo=timezone.utc), **kw)
+    return Feedback(text=text, customer_email=email, received_at=NOW, **kw)
 
 
 def classify_step(cat="billing_issue", conf=0.9, urgency="medium", alts=None, sentiment="negative"):
