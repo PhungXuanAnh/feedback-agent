@@ -53,7 +53,7 @@ A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (pla
 |---|---|---|
 | `ops@northwind-analytics.example` | Enterprise | outage / SLA |
 | `admin@bluepeak-labs.example` | Pro, one open webhook ticket | bugs, vague messages |
-| `billing@orchid-robotics.example` | Pro, duplicate 1200 USD invoices (2026-09-10) | duplicate charge and refund |
+| `billing@orchid-robotics.example` | Pro, duplicate 1200 USD invoices (2026-09-10) | duplicate charge and refund (`received_at` at most 60 days after the invoice, i.e. by 2026-11-09; later it is escalated) |
 | `finance@fathom-labs.example` | Standard, one 299 USD invoice (2026-06-10) | refund policy v1 vs v2 (`received_at` 2026-06-20 vs 2026-07-05) |
 
 The same four calls work against the hosted demo and a local server (set `BASE` accordingly; a local server ignores the token). What each call does is in [1.6.1](#161-http-api).
