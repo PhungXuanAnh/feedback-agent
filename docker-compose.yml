@@ -14,6 +14,14 @@ services:
       MAX_OUTPUT_TOKENS: ${MAX_OUTPUT_TOKENS:-8192}
       PRICE_PER_MTOK_IN: ${PRICE_PER_MTOK_IN:-}
       PRICE_PER_MTOK_OUT: ${PRICE_PER_MTOK_OUT:-}
-    volumes: ["state:/app/state"]
-volumes:
-  state: {}
+    # Source is bind-mounted and uvicorn reloads on .py changes, so code edits need no rebuild.
+    # The hosted demo uses deploy/docker-compose.prod.yml, which keeps the code baked into the image.
+    command: ["uvicorn", "feedback_agent.api:create_app", "--factory", "--reload", "--reload-dir", "feedback_agent",
+              "--host", "0.0.0.0", "--port", "8000"]
+    volumes:
+      - ./state:/app/state                # SQLite DB and traces, on the host
+      - ./feedback_agent:/app/feedback_agent
+      - ./data:/app/data
+      - ./samples:/app/samples
+      - ./eval:/app/eval
+      - ./tests:/app/tests

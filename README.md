@@ -95,7 +95,7 @@ docker compose run --rm app python -m feedback_agent demo   # full run: report, 
 ```
 
 The demo uses the scripted provider, so it shows the pipeline behaviour, not LLM judgement; the live Gemini outputs are in [1.2](#12-sample-outputs).
-The offline demo uses temporary state and deletes it on exit; the API server persists reports and traces in the Docker volume (`docker compose down -v` resets it). Without Docker: Python 3.10+, `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
+The offline demo uses temporary state and deletes it on exit; the API server persists reports and traces in `state/`, mounted from the repository folder (delete that folder to reset). Without Docker: Python 3.10+, `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
 
 ### 1.1.3. Local server with your Gemini key
 
@@ -258,7 +258,7 @@ The `curl` calls in [1.1.1](#111-hosted-demo-no-setup-no-key) are steps 1, 2, 4 
 
 ### 1.6.2. Configuration
 
-Every variable (LLM provider and model, step caps, token limit, prices, storage paths, shared-deployment protection) is explained in the comments of [`.env.example`](.env.example); copy it to `.env` (`cp .env.example .env`) and set `GEMINI_API_KEY`. Reports and reviews are stored in SQLite and traces as JSONL files, both in the Docker volume (locally without Docker: `data/feedback_agent.db` and `traces/`).
+Every variable (LLM provider and model, step caps, token limit, prices, storage paths, shared-deployment protection) is explained in the comments of [`.env.example`](.env.example); copy it to `.env` (`cp .env.example .env`) and set `GEMINI_API_KEY`. Reports and reviews are stored in SQLite and traces as JSONL files, both in `state/` (`state/feedback_agent.db` and `state/traces/`; locally without Docker: `data/feedback_agent.db` and `traces/`).
 
 ### 1.6.3. Project layout
 
