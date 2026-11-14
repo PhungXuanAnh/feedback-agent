@@ -9,8 +9,8 @@ from typing import Any
 
 from ..ops.trace import Event, Tracer
 from ..schemas import Classification, Feedback
-from . import guard
 from .evidence import Evidence
+from .injection_scan import find_injection_patterns
 from .tools import SOURCES, ToolContext, ToolResult, ToolStatus, run_tool
 
 _PERSISTENT = ("source_unavailable", "source_failure")  # a source problem, not an LLM mistake
@@ -135,7 +135,7 @@ class ToolExecutor:
         else:
             self.failed_sources.pop(tool_result.source, None)
             hits = (
-                guard.find_injection_patterns(json.dumps(tool_result.data, default=str))
+                find_injection_patterns(json.dumps(tool_result.data, default=str))
                 if tool_result.data
                 else []
             )

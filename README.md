@@ -157,7 +157,7 @@ Trace, simplified to the key fields (`trace.live.jsonl`, 14 steps; `python -m fe
 ## 1.3. Architecture
 
 ```
-feedback ─► intake ─► injection guard ─► classify ─► agent loop (LLM + 3 tools) ─► report + validator ─► review queue
+feedback ─► intake ─► injection scan ─► classify ─► agent loop (LLM + 3 tools) ─► report + validator ─► review queue
               code         code          LLM + code     LLM, rules enforced by code     LLM + code      code, human decides
 ```
 
@@ -166,7 +166,7 @@ A fixed six-step pipeline; the LLM is used only where language understanding is 
 | # | Step | LLM? | What it does | On failure |
 |---|---|---|---|---|
 | 1 | Intake | no | validates text + metadata (email, channel, time), caps length | HTTP 422 |
-| 2 | Injection guard | no | regexes **flag** injection patterns (never block); text wrapped in escaped `<customer_feedback>` | n/a |
+| 2 | Injection scan | no | regexes **flag** injection patterns (never block); later steps wrap the text in escaped `<customer_feedback>` | n/a |
 | 3 | Classify | 1 schema-forced call | category, up to 2 alternatives, sentiment, urgency, confidence; code adds urgency floors and `needs_human_triage` | retry once, then keyword rules |
 | 4 | Agent loop | yes | LLM chooses and calls the 3 tools, reads results, may search again | see [1.4.7](#147-failure-behaviour) |
 | 5 | Report + validator | LLM + code | LLM calls `submit_report`; code checks grounding, fills category/urgency/flags/confidence | one repair, then code-built template |
@@ -265,7 +265,7 @@ Every variable (LLM provider and model, step caps, token limit, prices, storage 
 | Folder | Role and files |
 |---|---|
 | [`agent_core/`](feedback_agent/agent_core/) main flow | [`pipeline.py`](feedback_agent/agent_core/pipeline.py) (the six steps in order; the orchestrator), [`agent.py`](feedback_agent/agent_core/agent.py) (tool loop, caps, forced lookups), [`tool_executor.py`](feedback_agent/agent_core/tool_executor.py) (cache, budget and retry for every tool call, also on the degraded path), [`classify.py`](feedback_agent/agent_core/classify.py), [`tools.py`](feedback_agent/agent_core/tools.py) (the three retrieval tools), [`hitl.py`](feedback_agent/agent_core/hitl.py) (review state machine) |
-| [`agent_core/`](feedback_agent/agent_core/) checks and safety | [`validator.py`](feedback_agent/agent_core/validator.py) (grounding), [`report.py`](feedback_agent/agent_core/report.py), [`evidence.py`](feedback_agent/agent_core/evidence.py) (what the tools returned), [`guard.py`](feedback_agent/agent_core/guard.py) (injection flags, delimiters), [`prompts/`](feedback_agent/agent_core/prompts/) loaded by [`prompts.py`](feedback_agent/agent_core/prompts.py) (versioned; the version goes into traces and reports) |
+| [`agent_core/`](feedback_agent/agent_core/) checks and safety | [`validator.py`](feedback_agent/agent_core/validator.py) (grounding), [`report.py`](feedback_agent/agent_core/report.py), [`evidence.py`](feedback_agent/agent_core/evidence.py) (what the tools returned), [`injection_scan.py`](feedback_agent/agent_core/injection_scan.py) (injection flags), [`guard.py`](feedback_agent/agent_core/guard.py) (escaped delimiters), [`prompts/`](feedback_agent/agent_core/prompts/) loaded by [`prompts.py`](feedback_agent/agent_core/prompts.py) (versioned; the version goes into traces and reports) |
 | [`interfaces/`](feedback_agent/interfaces/) entry points | [`api.py`](feedback_agent/interfaces/api.py), [`apiguard.py`](feedback_agent/interfaces/apiguard.py) (token, rate and daily limits), [`cli.py`](feedback_agent/interfaces/cli.py) and [`cli_extra.py`](feedback_agent/interfaces/cli_extra.py) |
 | [`llm/`](feedback_agent/llm/) model access | provider protocol, Gemini, scripted, factory; [`caller.py`](feedback_agent/llm/caller.py) (retry and usage) |
 | [`ops/`](feedback_agent/ops/) observability and quality | [`trace.py`](feedback_agent/ops/trace.py), [`samples.py`](feedback_agent/ops/samples.py) (makes [`samples/`](samples/)), [`evaluation.py`](feedback_agent/ops/evaluation.py) (runs [`eval/`](eval/)) |

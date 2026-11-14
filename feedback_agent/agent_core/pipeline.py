@@ -1,4 +1,4 @@
-"""Steps 2-6 of the flow: guard -> classify -> agent loop -> report + validator -> review queue.
+"""Steps 2-6: injection scan -> classify -> agent loop -> report + validator -> review queue.
 Step 1, intake, is the API or CLI that builds the Feedback. Only classify, the agent loop and
 submit_report use the LLM; everything else is plain code."""
 
@@ -14,10 +14,10 @@ from ..llm.base import LLMProvider
 from ..llm.caller import LLMCaller, LLMUnavailable
 from ..ops.trace import Event, Tracer, new_trace_id
 from ..schemas import Classification, Feedback, Report, ReportDraft
-from . import guard
 from .agent import AgentLoop, policy_query
 from .classify import classify, classify_by_keywords
 from .evidence import SYSTEM_GUIDELINE, Evidence
+from .injection_scan import find_injection_patterns
 from .prompts import AGENT_PROMPT, CLASSIFY_PROMPT
 from .report import build_report
 from .tool_executor import RunState, ToolExecutor
@@ -73,7 +73,7 @@ class FeedbackPipeline:
         1. Intake happens before this call: the API or CLI accepts the free text with its
            metadata (customer email or id, timestamp, channel) and validates it into a Feedback
            (HTTP 422 otherwise). This method first gives it an id and opens its trace.
-        2. Injection guard: regexes flag suspicious text; nothing is blocked.
+        2. Injection scan: regexes flag suspicious text; nothing is blocked.
         3. Classify: one schema-forced LLM call plus urgency floor rules; keyword rules when the
            LLM is unavailable.
         4. Agent loop: the LLM calls the three retrieval tools and submits a draft report.
@@ -87,7 +87,7 @@ class FeedbackPipeline:
         """
         # 1. Intake was done by the API or CLI; open this run's trace
         tracer = self._start_trace(feedback)
-        # 2. Injection guard
+        # 2. Injection scan
         flags = self._scan_for_injection(feedback, tracer)
         # 3. Classify
         llm_caller = LLMCaller(self.provider, self.settings, tracer)
@@ -125,9 +125,14 @@ class FeedbackPipeline:
 
     @staticmethod
     def _scan_for_injection(feedback: Feedback, tracer: Tracer) -> set[str]:
-        """Step 2, injection guard: flag (never block) known injection patterns."""
+        """Step 2, injection scan: flag known injection patterns in the text; nothing is blocked.
+
+        A match adds the injection_suspected flag and the pattern names go to the trace. Later the
+        flag lowers the report's confidence by 0.10 and caps it at medium, is shown to the agent
+        LLM and to the officer, and is saved with the feedback.
+        """
         flags: set[str] = set()
-        injection_patterns = guard.find_injection_patterns(feedback.text)
+        injection_patterns = find_injection_patterns(feedback.text)
         if injection_patterns:
             flags.add("injection_suspected")
             tracer.emit(Event.injection_guard, source="feedback", patterns=injection_patterns)
