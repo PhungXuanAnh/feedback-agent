@@ -12,7 +12,7 @@ from .base import (
     LLMTurn,
     Message,
     ToolCall,
-    ToolChoice,
+    ToolMode,
     ToolResponse,
     ToolSpec,
 )

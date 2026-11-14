@@ -3,10 +3,10 @@ import json
 import httpx
 import pytest
 
-from feedback_agent.agent_core.tools import tool_specs
+from feedback_agent.agent_core.tools import AGENT_TOOLS
 from feedback_agent.config import Settings
 from feedback_agent.llm import ConfigError, GeminiProvider, ScriptedProvider, get_provider
-from feedback_agent.llm.base import LLMError, Message, ToolChoice, ToolResponse, ToolSpec
+from feedback_agent.llm.base import LLMError, Message, ToolMode, ToolResponse, ToolSpec
 from feedback_agent.llm.gemini import to_gemini_schema
 from feedback_agent.llm.scripted import ScriptError
 
@@ -71,14 +71,11 @@ def test_gemini_http_roundtrip_replays_raw_and_answers_every_call():
         "secret-key", "m", client=httpx.Client(transport=httpx.MockTransport(handler))
     )
     msgs = [Message("system", "sys"), Message("user", "hi")]
-    turn = p.generate(msgs, tool_specs(), ToolChoice("required", ["lookup_customer"]), 256)
+    turn = p.generate(msgs, AGENT_TOOLS, ToolMode.required, 256)
     assert [c.id for c in turn.tool_calls] == ["fc1", "fc2"] and turn.usage["output_tokens"] == 70
     req, body = sent[0]
     assert req.headers["x-goog-api-key"] == "secret-key" and "secret-key" not in str(req.url)
-    assert body["toolConfig"]["functionCallingConfig"] == {
-        "mode": "ANY",
-        "allowedFunctionNames": ["lookup_customer"],
-    }
+    assert body["toolConfig"]["functionCallingConfig"] == {"mode": "ANY"}
     assert "$ref" not in json.dumps(body["tools"])  # enum schema inlined, not dropped
     # second request: model turn replayed verbatim (thought signature kept), ONE user message, 2 responses
     msgs += [
@@ -91,7 +88,7 @@ def test_gemini_http_roundtrip_replays_raw_and_answers_every_call():
             ],
         ),
     ]
-    p.generate(msgs, tool_specs(), ToolChoice("auto"), 256)
+    p.generate(msgs, AGENT_TOOLS, ToolMode.auto, 256)
     contents = sent[1][1]["contents"]
     assert contents[1]["parts"][0]["thoughtSignature"] == "SIG-1"
     resp_parts = contents[2]["parts"]
@@ -111,7 +108,7 @@ def test_gemini_error_classification():
             ),
         )
         with pytest.raises(LLMError) as e:
-            p.generate([Message("user", "x")], [], ToolChoice())
+            p.generate([Message("user", "x")], [], ToolMode.auto)
         return e.value.transient
 
     assert run(503) and run(429) and not run(403, {"error": {"message": "bad key"}})
@@ -121,13 +118,13 @@ def test_gemini_error_classification():
     )  # sampling noise: retry
 
 
-def test_scripted_provider_rejects_bad_conversation_and_tool_choice():
+def test_scripted_provider_rejects_bad_conversation_and_schema():
     spec = [ToolSpec("t", "d", {"type": "object", "properties": {}})]
     p = ScriptedProvider([{"tool_calls": [{"name": "t"}]}, {"tool_calls": [{"name": "t"}]}])
-    turn = p.generate([Message("user", "x")], spec, ToolChoice())
+    turn = p.generate([Message("user", "x")], spec, ToolMode.auto)
     with pytest.raises(ScriptError, match="answered"):  # a call left without its response
         p.generate(
-            [Message("user", "x"), turn.as_message(), Message("user", "again")], spec, ToolChoice()
+            [Message("user", "x"), turn.as_message(), Message("user", "again")], spec, ToolMode.auto
         )
     assert to_gemini_schema(
         {"type": "object", "properties": {"a": {"anyOf": [{"type": "string"}, {"type": "null"}]}}}
@@ -155,7 +152,7 @@ def test_malformed_gemini_payloads_become_llm_errors_and_are_retryable(payload):
         ),
     )
     with pytest.raises(LLMError, match="not JSON"):
-        p.generate([Message("user", "x")], [], ToolChoice())
+        p.generate([Message("user", "x")], [], ToolMode.auto)
     assert e.value.transient
 
 
@@ -183,7 +180,7 @@ def test_http_400_with_any_body_shape_is_an_llm_error(body, expect):
         ),
     )
     with pytest.raises(LLMError, match=expect) as e:
-        p.generate([Message("user", "x")], [], ToolChoice())
+        p.generate([Message("user", "x")], [], ToolMode.auto)
     assert (
         not e.value.transient and not e.value.usage_unknown
     )  # a rejected call: known free, not retried

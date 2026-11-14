@@ -8,7 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
-from ..llm.base import Message, ToolChoice, ToolSpec
+from ..llm.base import Message, ToolMode, ToolSpec
 from ..llm.caller import LLMCaller, LLMUnavailable
 from ..schemas import (
     Alternative,
@@ -143,7 +143,7 @@ def classify_by_llm(llm_caller: LLMCaller, feedback: Feedback) -> Classification
         CLASSIFY_PROMPT,
         messages,
         [CLASSIFY_TOOL],
-        ToolChoice("required", ["classify_feedback"]),
+        ToolMode.required,
     )
     call = None
     for tool_call in llm_turn.tool_calls:

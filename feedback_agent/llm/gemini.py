@@ -11,11 +11,15 @@ from typing import Any, Optional
 
 import httpx
 
-from .base import LLMError, LLMTurn, Message, ToolCall, ToolChoice, ToolSpec
+from .base import LLMError, LLMTurn, Message, ToolCall, ToolMode, ToolSpec
 
 _ALLOWED_FORMATS = {"date", "date-time", "enum"}
 _DROP = {"$defs", "$ref", "title", "default", "additionalProperties", "examples"}
-_GEMINI_MODES = {"auto": "AUTO", "required": "ANY", "none": "NONE"}  # functionCallingConfig.mode
+_GEMINI_MODES = {  # functionCallingConfig.mode
+    ToolMode.auto: "AUTO",
+    ToolMode.required: "ANY",
+    ToolMode.none: "NONE",
+}
 
 
 def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dict[str, Any]:
@@ -133,12 +137,12 @@ class GeminiProvider:
         self,
         messages: list[Message],
         tools: list[ToolSpec],
-        tool_choice: ToolChoice,
+        tool_mode: ToolMode,
         max_output_tokens: int,
     ) -> dict[str, Any]:
-        """The generateContent request body: contents, generation config, tools and tool choice.
+        """The generateContent request body: contents, generation config, tools and tool mode.
 
-        ToolChoice "required" becomes Gemini mode "ANY"; `allowed` becomes allowedFunctionNames.
+        ToolMode.required becomes Gemini mode "ANY".
         """
         system, contents = self._to_gemini_contents(messages)
         body: dict[str, Any] = {
@@ -166,10 +170,7 @@ class GeminiProvider:
                     ]
                 }
             ]
-            calling_config: dict[str, Any] = {"mode": _GEMINI_MODES[tool_choice.mode]}
-            if tool_choice.mode == "required" and tool_choice.allowed:
-                calling_config["allowedFunctionNames"] = tool_choice.allowed
-            body["toolConfig"] = {"functionCallingConfig": calling_config}
+            body["toolConfig"] = {"functionCallingConfig": {"mode": _GEMINI_MODES[tool_mode]}}
         return body
 
     # ------------------------------------------------------------- response
@@ -177,7 +178,7 @@ class GeminiProvider:
         self,
         messages: list[Message],
         tools: list[ToolSpec],
-        tool_choice: ToolChoice,
+        tool_mode: ToolMode,
         max_output_tokens: int = 2048,
     ) -> LLMTurn:
         """POST generateContent and parse the answer; failures raise LLMError.
@@ -185,7 +186,7 @@ class GeminiProvider:
         Network errors, 429, 5xx and non-JSON bodies are transient (LLMCaller retries once);
         other 4xx are permanent.
         """
-        body = self.build_body(messages, tools, tool_choice, max_output_tokens)
+        body = self.build_body(messages, tools, tool_mode, max_output_tokens)
         url = f"{self._base_url}/v1beta/models/{self.model}:generateContent"
         try:
             response = self._client.post(url, json=body, headers={"x-goog-api-key": self._api_key})

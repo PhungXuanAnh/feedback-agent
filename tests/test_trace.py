@@ -36,7 +36,7 @@ def test_failed_attempt_usage_is_counted_and_missing_usage_is_flagged(tmp_path):
     import httpx
     from feedback_agent.config import Settings
     from feedback_agent.llm import GeminiProvider
-    from feedback_agent.llm.base import Message, ToolChoice
+    from feedback_agent.llm.base import Message, ToolMode
     from feedback_agent.llm.caller import LLMCaller
     from feedback_agent.ops.trace import Tracer
 
@@ -69,7 +69,7 @@ def test_failed_attempt_usage_is_counted_and_missing_usage_is_flagged(tmp_path):
     )
     s = Settings(trace_dir=str(tmp_path), price_in=1, price_out=1, llm_retry_backoff_s=0)
     tr = Tracer("tr_000000000001", s)
-    LLMCaller(prov, s, tr).call("t", "v1", [Message("user", "x")], [], ToolChoice())
+    LLMCaller(prov, s, tr).call("t", "v1", [Message("user", "x")], [], ToolMode.auto)
     t = tr.totals()
     assert (t["prompt_tokens"], t["output_tokens"], t["cost_usd"]) == (200, 70, 0.00027)
     assert (t["llm_calls"], t["provider_calls"], t["usage_complete"]) == (1, 2, True)
@@ -89,7 +89,7 @@ def test_usage_complete_distinguishes_unknown_from_known_free_attempts(failure, 
     import httpx
     from feedback_agent.config import Settings
     from feedback_agent.llm import GeminiProvider
-    from feedback_agent.llm.base import Message, ToolChoice
+    from feedback_agent.llm.base import Message, ToolMode
     from feedback_agent.llm.caller import LLMCaller
     from feedback_agent.ops.trace import Tracer
 
@@ -118,7 +118,7 @@ def test_usage_complete_distinguishes_unknown_from_known_free_attempts(failure, 
     prov = GeminiProvider("k", "m", client=httpx.Client(transport=httpx.MockTransport(handle)))
     s = Settings(trace_dir=str(tmp_path), llm_retry_backoff_s=0, price_in=1, price_out=1)
     tr = Tracer("tr_000000000003", s)
-    LLMCaller(prov, s, tr).call("t", "v1", [Message("user", "x")], [], ToolChoice())
+    LLMCaller(prov, s, tr).call("t", "v1", [Message("user", "x")], [], ToolMode.auto)
     t = tr.totals()
     assert t["provider_calls"] == 2 and t["usage_complete"] is complete
     assert (t["prompt_tokens"], t["output_tokens"]) == (

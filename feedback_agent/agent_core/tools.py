@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..database import Database
 from ..llm.base import ToolSpec
-from ..schemas import Category, TIER_ORDER
+from ..schemas import Category, ReportDraft, TIER_ORDER
 
 
 class ToolStatus(str, Enum):
@@ -95,42 +95,47 @@ class PolicyArgs(BaseModel):
     top_k: int = Field(default=3, ge=1, le=3, description="Number of policies to return (max 3).")
 
 
-ARG_MODELS = {
+RETRIEVAL_ARG_MODELS = {
     "get_cs_guidelines": GuidelinesArgs,
     "lookup_customer": CustomerArgs,
     "search_policies": PolicyArgs,
 }
 
-TOOL_DESCRIPTIONS = {
-    "get_cs_guidelines": (
+SUBMIT_TOOL = ToolSpec(
+    "submit_report",
+    "Submit the final report for the CS officer. Allowed only after guidelines, customer and policies "
+    "were all consulted. The system validates every citation and action against the tool results; if "
+    "it is rejected, fix the listed problems and call it again.",
+    ReportDraft.model_json_schema(),
+)
+
+# Offered on every agent turn except the last, which offers only SUBMIT_TOOL.
+AGENT_TOOLS = [
+    ToolSpec(
+        "get_cs_guidelines",
         "Retrieve the standard customer-support process (CS workflow guideline) for ONE feedback category. "
         "Returns the guideline id, steps and which action types it supports. Call it for the classified "
-        "category; for ambiguous feedback you may also call it for an alternative category."
+        "category; for ambiguous feedback you may also call it for an alternative category.",
+        GuidelinesArgs.model_json_schema(),
     ),
-    "lookup_customer": (
+    ToolSpec(
+        "lookup_customer",
         "Look up the customer who sent this feedback: tier, tenure, open tickets, recent invoices and "
         "duplicate-charge candidates. You can only look up the sender of THIS feedback (the email or id in "
         "the metadata); anything else is refused as out_of_scope. status=not_found means no record exists "
-        "for the sender: treat the customer as unverified and never invent a tier."
+        "for the sender: treat the customer as unverified and never invent a tier.",
+        CustomerArgs.model_json_schema(),
     ),
-    "search_policies": (
+    ToolSpec(
+        "search_policies",
         "Search the company policies in force on the feedback date (refunds, SLA, escalation, security, "
         "privacy, conduct). Returns at most 3 policies with their conditions (tier, max amount, time window) "
         "and which action types they allow. Use short keywords; if nothing matches the result is not_found "
-        "and you must say that no policy applies."
+        "and you must say that no policy applies.",
+        PolicyArgs.model_json_schema(),
     ),
-}
-
-
-def tool_specs(include_submit: Any = None) -> list[ToolSpec]:
-    """Specs of the 3 retrieval tools, plus `include_submit` (the submit_report spec) if given."""
-    specs = [
-        ToolSpec(name, TOOL_DESCRIPTIONS[name], ARG_MODELS[name].model_json_schema())
-        for name in RETRIEVAL_TOOLS
-    ]
-    if include_submit is not None:
-        specs.append(include_submit)
-    return specs
+    SUBMIT_TOOL,
+]
 
 
 # ------------------------------------------------------------- knowledge base
@@ -435,7 +440,7 @@ def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> 
         return ToolResult(name, "unknown", ToolStatus.error, error="unknown_tool")
     source = SOURCES[name]
     try:
-        args = ARG_MODELS[name].model_validate(raw_args or {})
+        args = RETRIEVAL_ARG_MODELS[name].model_validate(raw_args or {})
     except ValidationError as e:
         error_message = "; ".join(
             f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors()

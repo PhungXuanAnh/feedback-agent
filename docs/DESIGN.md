@@ -37,7 +37,7 @@ Thresholds are reasoned (conservative), not tuned on the small eval set. If the 
             └─ submit_report ─► evidence gate (3 sources consulted?) ─► grounding validator ─► valid ─► report
                                      │ missing: tell the LLM            │ invalid: tell the LLM, one repair;
                                      ▼                                  ▼ still invalid: rebuild from validated data
-                                the last turn is reserved for submit_report (forced via tool_choice)
+                                the last turn is reserved for submit_report (forced via ToolMode.required)
 ```
 
 The evidence gate refuses `submit_report` until guidelines, customer and policies were all consulted. Each tool returns `found`, `not_found` (asked, nothing there: counts as consulted) or `error` (source failed: does **not** count).

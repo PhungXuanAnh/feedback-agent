@@ -4,6 +4,7 @@ plus one line in llm/__init__.py (see PROVIDERS)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 
@@ -32,10 +33,10 @@ class ToolSpec:
     parameters: dict[str, Any]  # JSON schema
 
 
-@dataclass
-class ToolChoice:
-    mode: Literal["auto", "required", "none"] = "auto"  # required = the model must call a tool
-    allowed: Optional[list[str]] = None  # with mode="required": only these tools may be called
+class ToolMode(str, Enum):
+    auto = "auto"
+    required = "required"  # the model must call one of the offered tools
+    none = "none"
 
 
 @dataclass
@@ -84,7 +85,7 @@ class LLMProvider(Protocol):
         self,
         messages: list[Message],
         tools: list[ToolSpec],
-        tool_choice: ToolChoice,
+        tool_mode: ToolMode,
         max_output_tokens: int = 2048,
     ) -> LLMTurn:
         """Send the conversation, return the model's next turn; raise LLMError on failure."""

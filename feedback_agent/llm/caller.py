@@ -7,7 +7,7 @@ from typing import Optional
 
 from ..config import Settings
 from ..ops.trace import Event, Tracer
-from .base import LLMError, LLMProvider, LLMTurn, Message, ToolChoice, ToolSpec
+from .base import LLMError, LLMProvider, LLMTurn, Message, ToolMode, ToolSpec
 
 
 class LLMUnavailable(RuntimeError):
@@ -26,7 +26,7 @@ class LLMCaller:
         prompt_version: str,
         messages: list[Message],
         tools: list[ToolSpec],
-        tool_choice: ToolChoice,
+        tool_mode: ToolMode,
         turn: Optional[int] = None,
     ) -> LLMTurn:
         """Call the provider, retrying once on a transient error; every attempt is traced.
@@ -39,7 +39,7 @@ class LLMCaller:
             started = time.monotonic()
             try:
                 llm_turn = self.provider.generate(
-                    messages, tools, tool_choice, self.settings.max_output_tokens
+                    messages, tools, tool_mode, self.settings.max_output_tokens
                 )
             except LLMError as e:
                 self.tracer.record_failed_attempt(

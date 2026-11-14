@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any, Union
 
-from .base import LLMError, LLMTurn, Message, ToolCall, ToolChoice, ToolSpec
+from .base import LLMError, LLMTurn, Message, ToolCall, ToolMode, ToolSpec
 
 
 class ScriptError(AssertionError):
@@ -68,14 +68,14 @@ class ScriptedProvider:
         self,
         messages: list[Message],
         tools: list[ToolSpec],
-        tool_choice: ToolChoice,
+        tool_mode: ToolMode,
         max_output_tokens: int = 2048,
     ) -> LLMTurn:
         """Next scripted turn, after checking the request like a real provider would.
 
         A step is an LLMTurn, {"text": ..., "tool_calls": [{"name": ..., "args": ...}]} or
-        {"error": "transient" | "permanent"}. A call to a tool not offered, or against
-        tool_choice, raises ScriptError.
+        {"error": "transient" | "permanent"}. A call to a tool not offered, or no call under
+        ToolMode.required, raises ScriptError.
         """
         self.check_conversation(messages)
         self.seen.append(list(messages))
@@ -101,16 +101,8 @@ class ScriptedProvider:
         for call in step.tool_calls:
             if call.name not in names:
                 raise ScriptError(f"scripted call to tool {call.name!r} that was not offered")
-            if (
-                tool_choice.mode == "required"
-                and tool_choice.allowed
-                and call.name not in tool_choice.allowed
-            ):
-                raise ScriptError(
-                    f"scripted call {call.name!r} violates tool_choice {tool_choice.allowed}"
-                )
-        if tool_choice.mode == "required" and not step.tool_calls:
-            raise ScriptError("tool_choice=required requires a tool call")
+        if tool_mode == ToolMode.required and not step.tool_calls:
+            raise ScriptError("tool_mode=required requires a tool call")
         return step
 
 
@@ -123,9 +115,9 @@ class FaultInjectingProvider:
         self.name, self.model = inner.name, inner.model
         self.calls = 0
 
-    def generate(self, messages, tools, tool_choice, max_output_tokens: int = 2048) -> LLMTurn:
+    def generate(self, messages, tools, tool_mode, max_output_tokens: int = 2048) -> LLMTurn:
         """Raise a transient LLMError from call `fail_from_call` on; earlier calls pass through."""
         self.calls += 1
         if self.calls >= self._fail_from_call:
             raise LLMError("injected provider failure", transient=True)
-        return self._inner.generate(messages, tools, tool_choice, max_output_tokens)
+        return self._inner.generate(messages, tools, tool_mode, max_output_tokens)

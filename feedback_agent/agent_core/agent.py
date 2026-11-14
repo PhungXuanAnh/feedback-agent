@@ -10,23 +10,15 @@ from typing import Any, Optional
 from pydantic import ValidationError
 
 from ..config import Settings
-from ..llm.base import Message, ToolCall, ToolChoice, ToolResponse, ToolSpec
+from ..llm.base import Message, ToolCall, ToolMode, ToolResponse
 from ..llm.caller import LLMCaller, LLMUnavailable
 from ..ops.trace import Event
 from ..schemas import Classification, Feedback, ReportDraft
 from . import guard
 from .prompts import AGENT_PROMPT, load_prompt
 from .tool_executor import CaseFile, ToolExecutor
-from .tools import ToolResult, tool_specs
+from .tools import AGENT_TOOLS, SUBMIT_TOOL, ToolResult
 from .validator import validate_draft
-
-SUBMIT_TOOL = ToolSpec(
-    "submit_report",
-    "Submit the final report for the CS officer. Allowed only after guidelines, customer and policies "
-    "were all consulted. The system validates every citation and action against the tool results; if "
-    "it is rejected, fix the listed problems and call it again.",
-    ReportDraft.model_json_schema(),
-)
 
 _QSTOP = {
     "the",
@@ -181,7 +173,7 @@ class AgentLoop:
         """Converse until a draft is accepted or a stop rule fires; return the outcome.
 
         Outcomes: submitted, grounding_failed, incomplete_context, llm_unavailable,
-        budget_exhausted. The last turn only offers submit_report (ToolChoice "required").
+        budget_exhausted. The last turn only offers submit_report (ToolMode.required).
         """
         case_file, evidence, settings = self.case_file, self.case_file.evidence, self.settings
         messages = [
@@ -210,13 +202,13 @@ class AgentLoop:
                         return AgentResult(
                             "incomplete_context", llm_turns=turns, failed_sources=failed_sources
                         )
-                tools, tool_choice = [SUBMIT_TOOL], ToolChoice("required", ["submit_report"])
+                tool_specs, tool_mode = [SUBMIT_TOOL], ToolMode.required
             else:
-                tools, tool_choice = tool_specs(SUBMIT_TOOL), ToolChoice("auto")
+                tool_specs, tool_mode = AGENT_TOOLS, ToolMode.auto
 
             try:
                 llm_turn = self.llm_caller.call(
-                    "agent_turn", AGENT_PROMPT, messages, tools, tool_choice, turn
+                    "agent_turn", AGENT_PROMPT, messages, tool_specs, tool_mode, turn
                 )
             except LLMUnavailable:
                 return AgentResult("llm_unavailable", llm_turns=turns)
