@@ -83,16 +83,22 @@ class FeedbackPipeline:
 
         StorageError propagates, so a caller never reports "queued" when saving failed.
         """
+        # 1. Intake
         tracer = self._start_trace(feedback)
+        # 2. Injection guard
         flags = self._scan_for_injection(feedback, tracer)
+        # 3. Classify
         llm_caller = LLMCaller(self.provider, self.settings, tracer)
         classification, llm_ok = self._classify(llm_caller, feedback, tracer)
+        # 4. Agent loop, and the validator half of step 5 (or the degraded path)
         run_state = self._new_run_state(feedback, classification, flags, tracer)
         tool_executor = ToolExecutor(
             run_state, self.settings.max_tool_calls, self.settings.max_forced_lookups
         )
         outcome = self._draft_report(run_state, tool_executor, llm_caller, llm_ok)
+        # 5. Report
         report = self._build_report(run_state, tool_executor, outcome)
+        # 6. Review queue
         self._save(run_state, report)
         return report
 
