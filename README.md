@@ -290,6 +290,8 @@ Built: effective-date and supersession filtering, keyword scoring, hard `top_k`,
 | Code quality | small modules ([layout in 1.6.3](#163-project-layout)), typed schemas, no framework, short [tests](tests/) |
 | Communication | this file, [`docs/DESIGN.md`](docs/DESIGN.md) and [`WRITEUP.md`](WRITEUP.md) |
 | Judgment | [`WRITEUP.md` Q3](WRITEUP.md#3-what-did-i-deliberately-leave-out-and-why); UI, auth, multi-turn, batch and real integrations left out |
+| Bonus: prompt-injection guardrails | [1.4.1](#141-injection-guard); [`injection_scan.py`](feedback_agent/agent_core/injection_scan.py) (flags) and [`guard.py`](feedback_agent/agent_core/guard.py) (escaped delimiters); sample [4](samples/04_abusive_injection/); eval cases `injection-other-customer` and `injection-in-ticket` ([`eval/RESULTS.md`](eval/RESULTS.md)); [`tests/test_injection.py`](tests/test_injection.py) |
+| Bonus: evaluation harness | [1.5](#15-evaluation-and-limitations); 14 labelled cases in [`eval/cases.json`](eval/cases.json), scored by [`evaluation.py`](feedback_agent/ops/evaluation.py); results in [`eval/RESULTS.md`](eval/RESULTS.md); [`tests/test_eval.py`](tests/test_eval.py) |
 
 **Credits.** Ideas reused from my earlier personal project https://github.com/PhungXuanAnh/logilens (a log-analytics assistant): the provider interface and fallback idea, converting a Pydantic JSON Schema to a Gemini function declaration (rewritten here), the keyword-rule fallback idea, JSONL audit logging.
 The tool loop, grounding, review flow, eval and usage tracking were written for this task; no other third-party code was copied.
