@@ -1,5 +1,6 @@
 """Optional protection for a shared deployment: API token, per-IP rate limit and daily request/token caps.
 Everything is off unless configured (see Settings), so local use and tests are unaffected."""
+
 from __future__ import annotations
 
 import secrets
@@ -15,7 +16,9 @@ from fastapi.security import APIKeyHeader
 from .config import Settings
 from .store import Store
 
-token_header = APIKeyHeader(name="X-API-Token", auto_error=False)  # also gives Swagger UI an "Authorize" button
+token_header = APIKeyHeader(
+    name="X-API-Token", auto_error=False
+)  # also gives Swagger UI an "Authorize" button
 
 
 class ApiGuard:
@@ -25,7 +28,9 @@ class ApiGuard:
         self._lock = threading.Lock()
 
     def auth(self, key: Optional[str] = Security(token_header)) -> None:
-        if self.settings.api_token and not (key and secrets.compare_digest(key, self.settings.api_token)):
+        if self.settings.api_token and not (
+            key and secrets.compare_digest(key, self.settings.api_token)
+        ):
             raise HTTPException(401, "missing or invalid X-API-Token header")
 
     def _client_ip(self, request: Request) -> str:
@@ -44,15 +49,20 @@ class ApiGuard:
                     recent_hits.popleft()
                 if len(recent_hits) >= self.settings.rate_limit_per_min:
                     retry_after = int(60 - (now - recent_hits[0])) + 1
-                    raise HTTPException(429,
-                                        f"rate limit: {self.settings.rate_limit_per_min} requests/minute per client",
-                                        headers={"Retry-After": str(retry_after)})
+                    raise HTTPException(
+                        429,
+                        f"rate limit: {self.settings.rate_limit_per_min} requests/minute per client",
+                        headers={"Retry-After": str(retry_after)},
+                    )
                 recent_hits.append(now)
         if self.settings.daily_request_limit or self.settings.daily_token_limit:
             day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             # persisted in SQLite, so restarts do not reset the cap
             requests_today, tokens = self.store.usage_since(day)
-            if self.settings.daily_request_limit and requests_today >= self.settings.daily_request_limit:
+            if (
+                self.settings.daily_request_limit
+                and requests_today >= self.settings.daily_request_limit
+            ):
                 raise HTTPException(429, "daily request limit reached; try again after 00:00 UTC")
             if self.settings.daily_token_limit and tokens >= self.settings.daily_token_limit:
                 raise HTTPException(429, "daily token budget reached; try again after 00:00 UTC")

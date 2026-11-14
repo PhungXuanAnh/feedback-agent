@@ -1,5 +1,6 @@
 """Evidence of one run: everything the tools returned. The grounding validator and the report
 may only rely on this set (plus the system-evidence guideline GL-TRIAGE)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,9 +19,11 @@ class Evidence:
     guidelines: dict[str, dict] = field(default_factory=dict)
     policies: dict[str, dict] = field(default_factory=dict)
     customer: Optional[dict] = None
-    consulted: set[str] = field(default_factory=set)       # found OR not_found
+    consulted: set[str] = field(default_factory=set)  # found OR not_found
     source_errors: dict[str, str] = field(default_factory=dict)
-    system_evidence: dict[str, dict] = field(default_factory=dict)  # GL-TRIAGE: not one of the 3 sources
+    system_evidence: dict[str, dict] = field(
+        default_factory=dict
+    )  # GL-TRIAGE: not one of the 3 sources
 
     # ------------------------------------------------------------ recording
     def record(self, tool_result: ToolResult) -> None:
@@ -37,7 +40,9 @@ class Evidence:
             elif tool_result.source == "customer":
                 self.customer = tool_result.data
             else:
-                self.policies.update({policy["policy_id"]: policy for policy in tool_result.data["policies"]})
+                self.policies.update(
+                    {policy["policy_id"]: policy for policy in tool_result.data["policies"]}
+                )
 
     # ------------------------------------------------------------- queries
     @property
@@ -62,8 +67,11 @@ class Evidence:
 
     def money_values(self) -> set[str]:
         """Normalised money figures known from records: invoice amounts, duplicate groups, policy caps."""
-        amounts: list[float] = [policy["max_amount"] for policy in self.policies.values()
-                                if policy.get("max_amount") is not None]
+        amounts: list[float] = [
+            policy["max_amount"]
+            for policy in self.policies.values()
+            if policy.get("max_amount") is not None
+        ]
         if self.customer:
             amounts += [invoice["amount"] for invoice in self.customer["recent_invoices"]]
             amounts += [group["amount"] for group in self.customer["duplicate_charge_candidates"]]
@@ -78,14 +86,24 @@ class Evidence:
 
     # --------------------------------------------------------- persistence
     def to_dict(self) -> dict[str, Any]:
-        return {"as_of": self.as_of.isoformat(), "guidelines": self.guidelines, "policies": self.policies,
-                "customer": self.customer, "consulted": sorted(self.consulted),
-                "source_errors": self.source_errors, "system_evidence": self.system_evidence}
+        return {
+            "as_of": self.as_of.isoformat(),
+            "guidelines": self.guidelines,
+            "policies": self.policies,
+            "customer": self.customer,
+            "consulted": sorted(self.consulted),
+            "source_errors": self.source_errors,
+            "system_evidence": self.system_evidence,
+        }
 
     @classmethod
     def from_dict(cls, stored: dict[str, Any]) -> "Evidence":
-        return cls(as_of=date.fromisoformat(stored["as_of"]), guidelines=stored["guidelines"],
-                   policies=stored["policies"],
-                   customer=stored["customer"], consulted=set(stored["consulted"]),
-                   source_errors=stored["source_errors"],
-                   system_evidence=stored["system_evidence"])
+        return cls(
+            as_of=date.fromisoformat(stored["as_of"]),
+            guidelines=stored["guidelines"],
+            policies=stored["policies"],
+            customer=stored["customer"],
+            consulted=set(stored["consulted"]),
+            source_errors=stored["source_errors"],
+            system_evidence=stored["system_evidence"],
+        )

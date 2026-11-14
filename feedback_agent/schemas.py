@@ -1,4 +1,5 @@
 """Typed data contracts shared by every pipeline step."""
+
 from __future__ import annotations
 
 import re
@@ -136,9 +137,15 @@ class CustomerContext(BaseModel):
 class ActionParams(BaseModel):
     """Typed (not free-form) so the function schema is valid for Gemini and every field is checkable."""
 
-    invoice_id: Optional[str] = Field(default=None, description="issue_refund: invoice from the customer record")
-    amount: Optional[float] = Field(default=None, allow_inf_nan=False, description="issue_refund: amount in USD")
-    target: Optional[str] = Field(default=None, description="escalations: team or queue, e.g. 'engineering_oncall'")
+    invoice_id: Optional[str] = Field(
+        default=None, description="issue_refund: invoice from the customer record"
+    )
+    amount: Optional[float] = Field(
+        default=None, allow_inf_nan=False, description="issue_refund: amount in USD"
+    )
+    target: Optional[str] = Field(
+        default=None, description="escalations: team or queue, e.g. 'engineering_oncall'"
+    )
 
 
 class SuggestedAction(BaseModel):

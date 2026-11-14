@@ -1,5 +1,6 @@
 """Step 3: classification. One forced-schema LLM call + code-owned safety nets
 (urgency floor rules, human-triage flag) + a keyword fallback when the LLM is down."""
+
 from __future__ import annotations
 
 import re
@@ -11,29 +12,46 @@ from .guard import wrap_feedback
 from .llm.base import Message, ToolChoice, ToolSpec
 from .llmcaller import LLMCaller, LLMUnavailable
 from .prompts import CLASSIFY_PROMPT, load_prompt
-from .schemas import Alternative, Category, Classification, Feedback, Sentiment, Urgency, max_urgency
+from .schemas import (
+    Alternative,
+    Category,
+    Classification,
+    Feedback,
+    Sentiment,
+    Urgency,
+    max_urgency,
+)
 
-TRIAGE_CONFIDENCE = 0.65      # below this the primary category is not trusted (conservative default)
+TRIAGE_CONFIDENCE = 0.65  # below this the primary category is not trusted (conservative default)
 TRIAGE_ALT_CONFIDENCE = 0.40  # a second reading this plausible means the message is ambiguous
 
 
 class ClassifyArgs(BaseModel):
     category: Category
-    alternatives: list[Alternative] = Field(default_factory=list, max_length=2,
-                                            description="Up to 2 other plausible categories with confidence.")
+    alternatives: list[Alternative] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Up to 2 other plausible categories with confidence.",
+    )
     sentiment: Sentiment
     urgency: Urgency
     confidence: float = Field(ge=0, le=1, description="Confidence in the primary category, 0-1.")
     rationale: str = Field(default="", max_length=300)
 
 
-CLASSIFY_TOOL = ToolSpec("classify_feedback", "Record the classification of the customer feedback.",
-                         ClassifyArgs.model_json_schema())
+CLASSIFY_TOOL = ToolSpec(
+    "classify_feedback",
+    "Record the classification of the customer feedback.",
+    ClassifyArgs.model_json_schema(),
+)
 
 # Floor rules: code sets a minimum urgency, the LLM can only raise it (under-rating an incident
 # costs more than over-rating a small issue).
-_SEVERE = re.compile(r"\b(breach(ed)?|data leak|leaked|lawsuit|legal action|attorney|lawyer|sue (you|us)|"
-                     r"ransomware|unauthori[sz]ed access|hacked|regulator)\b", re.I)
+_SEVERE = re.compile(
+    r"\b(breach(ed)?|data leak|leaked|lawsuit|legal action|attorney|lawyer|sue (you|us)|"
+    r"ransomware|unauthori[sz]ed access|hacked|regulator)\b",
+    re.I,
+)
 
 
 def apply_floor(classification: Classification, text: str) -> Classification:
@@ -52,15 +70,23 @@ def apply_floor(classification: Classification, text: str) -> Classification:
     classification.urgency = max_urgency(classification.urgency, floor)
     classification.urgency_floor_reasons = reasons
     classification.needs_human_triage = (
-        classification.category is Category.unclear or classification.confidence < TRIAGE_CONFIDENCE
-        or any(alternative.confidence >= TRIAGE_ALT_CONFIDENCE for alternative in classification.alternatives))
+        classification.category is Category.unclear
+        or classification.confidence < TRIAGE_CONFIDENCE
+        or any(
+            alternative.confidence >= TRIAGE_ALT_CONFIDENCE
+            for alternative in classification.alternatives
+        )
+    )
     return classification
 
 
 _KEYWORDS = [
     (Category.security_concern, r"breach|leak|hacked|unauthori[sz]ed|vulnerab|credential"),
     (Category.data_privacy, r"gdpr|personal data|delete my data|data deletion|privacy"),
-    (Category.service_outage, r"\bdown\b|outage|unavailable|not working at all|cannot access|can't access"),
+    (
+        Category.service_outage,
+        r"\bdown\b|outage|unavailable|not working at all|cannot access|can't access",
+    ),
     (Category.billing_issue, r"invoice|charged|charge|refund|billing|payment"),
     (Category.churn_risk, r"cancel|switch(ing)? to|competitor|leaving|terminate our"),
     (Category.bug_report, r"bug|error|crash|fails?|broken|wrong"),
@@ -72,21 +98,42 @@ _ABUSIVE = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|d
 
 def keyword_classify(text: str) -> Classification:
     """Degraded path when the LLM is unavailable: coarse, never confident, always sent to triage."""
-    category = next((candidate for candidate, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear)
-    sentiment = (Sentiment.abusive if _ABUSIVE.search(text) else
-                 Sentiment.positive if category is Category.praise else Sentiment.negative)
-    classification = Classification(category=category, sentiment=sentiment, urgency=Urgency.medium, confidence=0.4,
-                                    rationale="keyword rules (LLM unavailable)", classified_by="keyword_rules")
+    category = next(
+        (candidate for candidate, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear
+    )
+    sentiment = (
+        Sentiment.abusive
+        if _ABUSIVE.search(text)
+        else Sentiment.positive if category is Category.praise else Sentiment.negative
+    )
+    classification = Classification(
+        category=category,
+        sentiment=sentiment,
+        urgency=Urgency.medium,
+        confidence=0.4,
+        rationale="keyword rules (LLM unavailable)",
+        classified_by="keyword_rules",
+    )
     return apply_floor(classification, text)
 
 
 def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
     """Raises LLMUnavailable when the provider fails or returns an unusable answer."""
-    messages = [Message("system", load_prompt(CLASSIFY_PROMPT)),
-                Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}")]
-    llm_turn = llm_caller.call("classify", CLASSIFY_PROMPT, messages, [CLASSIFY_TOOL],
-                               ToolChoice("required", ["classify_feedback"]))
-    call = next((tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"), None)
+    messages = [
+        Message("system", load_prompt(CLASSIFY_PROMPT)),
+        Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}"),
+    ]
+    llm_turn = llm_caller.call(
+        "classify",
+        CLASSIFY_PROMPT,
+        messages,
+        [CLASSIFY_TOOL],
+        ToolChoice("required", ["classify_feedback"]),
+    )
+    call = next(
+        (tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"),
+        None,
+    )
     if call is None:
         raise LLMUnavailable("classify_feedback was not called")
     try:

@@ -1,4 +1,5 @@
 """Command line: python -m feedback_agent <command>."""
+
 from __future__ import annotations
 
 import argparse
@@ -42,8 +43,11 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         if settings.llm_provider == "scripted" and not script:
             script = Path(path).parent.parent / "scripts" / Path(path).name
         try:
-            pipeline = build_pipeline(settings, script=str(script) if script else None,
-                                      fault_injector=_fault_injector(args.inject_tool_fault))
+            pipeline = build_pipeline(
+                settings,
+                script=str(script) if script else None,
+                fault_injector=_fault_injector(args.inject_tool_fault),
+            )
             if args.inject_llm_fault:
                 pipeline.provider = FaultInjectingProvider(pipeline.provider, args.inject_llm_fault)
             report = pipeline.process(Feedback(**json.loads(Path(path).read_text("utf-8"))))
@@ -55,7 +59,9 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
         if args.out:
             out_dir = Path(args.out)
             out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / f"{Path(path).stem}.report.json").write_text(report.model_dump_json(indent=2) + "\n", "utf-8")
+            (out_dir / f"{Path(path).stem}.report.json").write_text(
+                report.model_dump_json(indent=2) + "\n", "utf-8"
+            )
         if args.show_trace:
             print("\n" + render_trace(load_trace(report.trace_id, settings.trace_dir)))
     return exit_code
@@ -76,13 +82,17 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     parser = argparse.ArgumentParser(prog="feedback_agent", description=__doc__)
     subparsers = parser.add_subparsers(dest="cmd", required=True)
-    run_parser = subparsers.add_parser("run", help="process feedback JSON file(s) through the pipeline")
+    run_parser = subparsers.add_parser(
+        "run", help="process feedback JSON file(s) through the pipeline"
+    )
     run_parser.add_argument("inputs", nargs="+")
     run_parser.add_argument("--provider", help="gemini | scripted (default: LLM_PROVIDER)")
     run_parser.add_argument("--script", help="scripted provider: JSON file of turns")
     run_parser.add_argument("--max-llm-turns", type=int)
     run_parser.add_argument("--max-tool-calls", type=int)
-    run_parser.add_argument("--inject-llm-fault", type=int, metavar="N", help="every LLM call from the Nth on fails")
+    run_parser.add_argument(
+        "--inject-llm-fault", type=int, metavar="N", help="every LLM call from the Nth on fails"
+    )
     run_parser.add_argument("--inject-tool-fault", action="append", metavar="TOOL[:N]")
     run_parser.add_argument("--trace-dir")
     run_parser.add_argument("--db")
@@ -92,9 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     trace_parser = subparsers.add_parser("trace", help="print a trace in readable form")
     trace_parser.add_argument("trace", help="trace id or .jsonl path")
     trace_parser.set_defaults(fn=cmd_trace)
-    seed_parser = subparsers.add_parser("seed", help="(re)load customers/tickets/invoices from data/seed/*.csv")
+    seed_parser = subparsers.add_parser(
+        "seed", help="(re)load customers/tickets/invoices from data/seed/*.csv"
+    )
     seed_parser.set_defaults(fn=cmd_seed)
     from . import cli_extra  # review / reports / eval / serve / demo
+
     cli_extra.register(subparsers)
     args = parser.parse_args(argv)
     return args.fn(args, settings)

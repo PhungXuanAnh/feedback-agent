@@ -1,6 +1,7 @@
 """Step 2: injection guard. Regexes only FLAG (they never block, and they are easy to evade);
 the real defences are role separation, escaped delimiters, schema-forced output, read-only tools,
 the grounding validator and human review."""
+
 from __future__ import annotations
 
 import json

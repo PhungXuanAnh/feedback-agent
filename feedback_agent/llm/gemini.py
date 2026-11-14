@@ -3,6 +3,7 @@
 Idea borrowed from a personal project (logilens): Pydantic JSON-Schema -> Gemini function
 declaration. Rewritten here for a multi-turn tool loop: model turns are replayed verbatim
 (`raw`, which carries thought signatures) and every functionCall gets a functionResponse."""
+
 from __future__ import annotations
 
 import copy
@@ -24,13 +25,18 @@ def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dic
     defs = defs if defs is not None else schema.get("$defs", {})
     if "$ref" in schema:
         target = defs.get(schema["$ref"].split("/")[-1], {})
-        return to_gemini_schema({**copy.deepcopy(target), **{k: v for k, v in schema.items() if k != "$ref"}}, defs)
+        return to_gemini_schema(
+            {**copy.deepcopy(target), **{k: v for k, v in schema.items() if k != "$ref"}}, defs
+        )
     if "allOf" in schema and len(schema["allOf"]) == 1:
         rest = {k: v for k, v in schema.items() if k != "allOf"}
         return to_gemini_schema({**schema["allOf"][0], **rest}, defs)
     if "anyOf" in schema:
-        non_null = [option for option in schema["anyOf"]
-                    if not (isinstance(option, dict) and option.get("type") == "null")]
+        non_null = [
+            option
+            for option in schema["anyOf"]
+            if not (isinstance(option, dict) and option.get("type") == "null")
+        ]
         rest = {k: v for k, v in schema.items() if k != "anyOf"}
         if len(non_null) == 1:
             return to_gemini_schema({**rest, **non_null[0]}, defs)
@@ -40,8 +46,10 @@ def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dic
         if k in _DROP or (k == "format" and v not in _ALLOWED_FORMATS):
             continue
         if k == "properties":
-            reduced[k] = {property_name: to_gemini_schema(property_schema, defs) for property_name,
-                          property_schema in v.items()}
+            reduced[k] = {
+                property_name: to_gemini_schema(property_schema, defs)
+                for property_name, property_schema in v.items()
+            }
         elif k == "items":
             reduced[k] = to_gemini_schema(v, defs)
         else:
@@ -54,9 +62,16 @@ def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dic
 class GeminiProvider:
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str, base_url: str = "https://generativelanguage.googleapis.com",
-                 temperature: Optional[float] = None, timeout: float = 60.0, thinking_level: str = "",
-                 client: Optional[httpx.Client] = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str = "https://generativelanguage.googleapis.com",
+        temperature: Optional[float] = None,
+        timeout: float = 60.0,
+        thinking_level: str = "",
+        client: Optional[httpx.Client] = None,
+    ):
         self._api_key = api_key
         self.model = model
         self._base_url = base_url.rstrip("/")
@@ -77,16 +92,25 @@ class GeminiProvider:
             elif message.role == "model":
                 if message.raw is not None:  # replay verbatim: keeps thought signatures intact
                     contents.append(message.raw)
-                    api_ids |= {part["functionCall"]["id"] for part in message.raw.get("parts", [])
-                                if "functionCall" in part and part["functionCall"].get("id")}
+                    api_ids |= {
+                        part["functionCall"]["id"]
+                        for part in message.raw.get("parts", [])
+                        if "functionCall" in part and part["functionCall"].get("id")
+                    }
                 else:
                     parts: list[dict] = [{"text": message.text}] if message.text else []
-                    parts += [{"functionCall": {"name": call.name, "args": call.args}} for call in message.tool_calls]
+                    parts += [
+                        {"functionCall": {"name": call.name, "args": call.args}}
+                        for call in message.tool_calls
+                    ]
                     contents.append({"role": "model", "parts": parts})
             elif message.role == "tool":  # all responses of one model turn go into ONE user message
                 parts = []
                 for response in message.tool_responses:
-                    function_response: dict[str, Any] = {"name": response.name, "response": response.response}
+                    function_response: dict[str, Any] = {
+                        "name": response.name,
+                        "response": response.response,
+                    }
                     if response.call_id in api_ids:
                         function_response["id"] = response.call_id
                     parts.append({"functionResponse": function_response})
@@ -95,21 +119,39 @@ class GeminiProvider:
                 contents.append({"role": "user", "parts": parts})
         return ({"parts": [{"text": system}]} if system else None), contents
 
-    def build_body(self, messages: list[Message], tools: list[ToolSpec], tool_choice: ToolChoice,
-                   max_output_tokens: int) -> dict[str, Any]:
+    def build_body(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        tool_choice: ToolChoice,
+        max_output_tokens: int,
+    ) -> dict[str, Any]:
         system, contents = self._contents(messages)
-        body: dict[str, Any] = {"contents": contents,
-                                "generationConfig": {"maxOutputTokens": max_output_tokens}}
+        body: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {"maxOutputTokens": max_output_tokens},
+        }
         if self._temperature is not None:
             body["generationConfig"]["temperature"] = self._temperature
-        if self._thinking:  # thinking tokens count against maxOutputTokens, so a lower level also avoids truncation
+        if (
+            self._thinking
+        ):  # thinking tokens count against maxOutputTokens, so a lower level also avoids truncation
             body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": self._thinking}
         if system:
             body["system_instruction"] = system
         if tools:
-            body["tools"] = [{"functionDeclarations": [
-                {"name": tool.name, "description": tool.description, "parameters": to_gemini_schema(tool.parameters)}
-                for tool in tools]}]
+            body["tools"] = [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": to_gemini_schema(tool.parameters),
+                        }
+                        for tool in tools
+                    ]
+                }
+            ]
             calling_config: dict[str, Any] = {"mode": _GEMINI_MODES[tool_choice.mode]}
             if tool_choice.mode == "required" and tool_choice.allowed:
                 calling_config["allowedFunctionNames"] = tool_choice.allowed
@@ -117,8 +159,13 @@ class GeminiProvider:
         return body
 
     # ------------------------------------------------------------- response
-    def generate(self, messages: list[Message], tools: list[ToolSpec], tool_choice: ToolChoice,
-                 max_output_tokens: int = 2048) -> LLMTurn:
+    def generate(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        tool_choice: ToolChoice,
+        max_output_tokens: int = 2048,
+    ) -> LLMTurn:
         body = self.build_body(messages, tools, tool_choice, max_output_tokens)
         url = f"{self._base_url}/v1beta/models/{self.model}:generateContent"
         try:
@@ -126,8 +173,14 @@ class GeminiProvider:
         except httpx.TransportError as e:  # includes timeouts
             # a failure while CONNECTING never reached the model (no tokens); a read timeout/error may have
             # happened after the model started working, so its usage is unknown
-            connect_phase = isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
-            raise LLMError(f"network error: {type(e).__name__}", transient=True, usage_unknown=not connect_phase) from e
+            connect_phase = isinstance(
+                e, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+            )
+            raise LLMError(
+                f"network error: {type(e).__name__}",
+                transient=True,
+                usage_unknown=not connect_phase,
+            ) from e
         # HTTP error statuses: the provider rejected the call. Google documents that failed 400/500 requests
         # are not billed for tokens (they still count toward quota); other statuses are assumed the same.
         if response.status_code == 429 or response.status_code >= 500:
@@ -155,9 +208,12 @@ class GeminiProvider:
         usage = payload.get("usageMetadata") if isinstance(payload, dict) else None
         if not isinstance(usage, dict) or not usage:
             return None
-        return {"prompt_tokens": usage.get("promptTokenCount"),
-                "output_tokens": (usage.get("candidatesTokenCount") or 0) + (usage.get("thoughtsTokenCount") or 0),
-                "total_tokens": usage.get("totalTokenCount")}
+        return {
+            "prompt_tokens": usage.get("promptTokenCount"),
+            "output_tokens": (usage.get("candidatesTokenCount") or 0)
+            + (usage.get("thoughtsTokenCount") or 0),
+            "total_tokens": usage.get("totalTokenCount"),
+        }
 
     @classmethod
     def parse(cls, payload: Any) -> LLMTurn:
@@ -177,9 +233,15 @@ class GeminiProvider:
         if not isinstance(payload, dict):
             raise LLMError("unexpected response shape (not an object)", transient=True)
         candidates = payload.get("candidates") or []
-        if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+        if (
+            not isinstance(candidates, list)
+            or not candidates
+            or not isinstance(candidates[0], dict)
+        ):
             prompt_feedback = payload.get("promptFeedback")
-            block = prompt_feedback.get("blockReason") if isinstance(prompt_feedback, dict) else None
+            block = (
+                prompt_feedback.get("blockReason") if isinstance(prompt_feedback, dict) else None
+            )
             raise LLMError(f"no usable candidates (blockReason={block})", transient=block is None)
         candidate = candidates[0]
         content = candidate.get("content") if isinstance(candidate.get("content"), dict) else {}
@@ -188,20 +250,32 @@ class GeminiProvider:
         calls = []
         for i, part in enumerate(x for x in parts if "functionCall" in x):
             function_call = part["functionCall"]
-            if (not isinstance(function_call, dict) or not isinstance(function_call.get("name"), str)
-                    or not function_call["name"]):
+            if (
+                not isinstance(function_call, dict)
+                or not isinstance(function_call.get("name"), str)
+                or not function_call["name"]
+            ):
                 raise LLMError("malformed functionCall (missing name)", transient=True)
             args = {} if function_call.get("args") is None else function_call["args"]
             if not isinstance(args, dict):
                 raise LLMError("malformed functionCall (args are not an object)", transient=True)
-            calls.append(ToolCall(id=function_call.get("id") or f"call_{i}", name=function_call["name"], args=args))
-        text = "".join(part.get("text", "") for part in parts
-                       if isinstance(part.get("text"), str) and not part.get("thought")).strip()
+            calls.append(
+                ToolCall(
+                    id=function_call.get("id") or f"call_{i}", name=function_call["name"], args=args
+                )
+            )
+        text = "".join(
+            part.get("text", "")
+            for part in parts
+            if isinstance(part.get("text"), str) and not part.get("thought")
+        ).strip()
         if not calls and not text:
             # MALFORMED_FUNCTION_CALL is sampling noise on a complex schema: worth one retry
             reason = candidate.get("finishReason")
-            raise LLMError(f"empty response (finishReason={reason}; {str(candidate.get('finishMessage', ''))[:160]})",
-                           transient=reason in (None, "STOP", "OTHER", "MALFORMED_FUNCTION_CALL"))
+            raise LLMError(
+                f"empty response (finishReason={reason}; {str(candidate.get('finishMessage', ''))[:160]})",
+                transient=reason in (None, "STOP", "OTHER", "MALFORMED_FUNCTION_CALL"),
+            )
         if not calls and candidate.get("finishReason") == "MAX_TOKENS":
             raise LLMError("response truncated (MAX_TOKENS)")
         raw = {"role": "model", "parts": parts}

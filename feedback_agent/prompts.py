@@ -1,4 +1,5 @@
 """Versioned prompt files (prompts/<name>.md); the version id is written into traces and reports."""
+
 from pathlib import Path
 
 CLASSIFY_PROMPT = "classify.v1"

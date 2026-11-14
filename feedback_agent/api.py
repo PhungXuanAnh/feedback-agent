@@ -1,4 +1,5 @@
 """FastAPI surface: intake + the review queue for CS officers (no UI by design)."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -96,11 +97,15 @@ class TraceEvent(BaseModel):
     event: str
 
 
-UNAUTHORIZED = {401: {"model": ErrorMessage, "description": "Missing or invalid X-API-Token header"}}
+UNAUTHORIZED = {
+    401: {"model": ErrorMessage, "description": "Missing or invalid X-API-Token header"}
+}
 NOT_FOUND = {404: {"model": ErrorMessage, "description": "Not found"}}
 
 
-def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackPipeline] = None) -> FastAPI:
+def create_app(
+    settings: Optional[Settings] = None, pipeline: Optional[FeedbackPipeline] = None
+) -> FastAPI:
     settings = settings or Settings.from_env()
     app = FastAPI(title="Feedback agent", version="0.1.0")
     state: dict[str, Any] = {"pipeline": pipeline}
@@ -113,10 +118,19 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackP
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/feedback", status_code=201, dependencies=[Depends(guard.auth), Depends(guard.cost_guard)],
-              responses={**UNAUTHORIZED,
-                         429: {"model": ErrorMessage, "description": "Rate limit or daily cap reached"},
-                         503: {"model": ErrorMessage, "description": "Report not queued: store or LLM config unavailable"}})
+    @app.post(
+        "/feedback",
+        status_code=201,
+        dependencies=[Depends(guard.auth), Depends(guard.cost_guard)],
+        responses={
+            **UNAUTHORIZED,
+            429: {"model": ErrorMessage, "description": "Rate limit or daily cap reached"},
+            503: {
+                "model": ErrorMessage,
+                "description": "Report not queued: store or LLM config unavailable",
+            },
+        },
+    )
     def submit_feedback(body: FeedbackIn) -> Report:
         try:
             if state["pipeline"] is None:
@@ -125,38 +139,71 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackP
                 feedback = Feedback(**body.model_dump(exclude_none=True))
             except ValidationError as e:  # same 422 shape as FastAPI's own body validation
                 raise RequestValidationError(
-                    [{**x, "loc": ("body", *x["loc"])} for x in e.errors(include_url=False)]) from e
+                    [{**x, "loc": ("body", *x["loc"])} for x in e.errors(include_url=False)]
+                ) from e
             return state["pipeline"].process(feedback)
-        except (StorageError, ConfigError) as e:  # never claim the report was queued when it was not
+        except (
+            StorageError,
+            ConfigError,
+        ) as e:  # never claim the report was queued when it was not
             raise HTTPException(503, f"report not queued: {e}") from e
 
-    @app.get("/reports", dependencies=protected, response_model=list[ReportSummary], responses=UNAUTHORIZED)
+    @app.get(
+        "/reports",
+        dependencies=protected,
+        response_model=list[ReportSummary],
+        responses=UNAUTHORIZED,
+    )
     def list_reports(status: Optional[str] = None) -> list[dict]:
         return [pending_summary(row) for row in store.list_reports(status)]
 
-    @app.get("/reports/{report_id}", dependencies=protected, response_model=ReportDetail,
-             responses={**UNAUTHORIZED, **NOT_FOUND})
+    @app.get(
+        "/reports/{report_id}",
+        dependencies=protected,
+        response_model=ReportDetail,
+        responses={**UNAUTHORIZED, **NOT_FOUND},
+    )
     def get_report(report_id: str) -> dict:
         try:
             return reviews.get(report_id)
         except ReviewError as e:
             raise HTTPException(e.status_code, str(e)) from e
 
-    @app.post("/reports/{report_id}/review", dependencies=protected, response_model=ReviewResult,
-              responses={**UNAUTHORIZED, **NOT_FOUND,
-                         409: {"model": ErrorMessage, "description": "Report already decided differently"},
-                         422: {"description": "Invalid body, or the override failed the action validator",
-                               "content": {"application/json": {"schema": {"anyOf": [
-                                   {"$ref": "#/components/schemas/HTTPValidationError"},
-                                   {"$ref": "#/components/schemas/ErrorMessage"}]}}}}})
+    @app.post(
+        "/reports/{report_id}/review",
+        dependencies=protected,
+        response_model=ReviewResult,
+        responses={
+            **UNAUTHORIZED,
+            **NOT_FOUND,
+            409: {"model": ErrorMessage, "description": "Report already decided differently"},
+            422: {
+                "description": "Invalid body, or the override failed the action validator",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "anyOf": [
+                                {"$ref": "#/components/schemas/HTTPValidationError"},
+                                {"$ref": "#/components/schemas/ErrorMessage"},
+                            ]
+                        }
+                    }
+                },
+            },
+        },
+    )
     def review(report_id: str, review_request: ReviewRequest) -> dict:
         try:
             return reviews.review(report_id, review_request)
         except ReviewError as e:
             raise HTTPException(e.status_code, str(e)) from e
 
-    @app.get("/traces/{trace_id}", dependencies=protected, response_model=list[TraceEvent],
-             responses={**UNAUTHORIZED, **NOT_FOUND})
+    @app.get(
+        "/traces/{trace_id}",
+        dependencies=protected,
+        response_model=list[TraceEvent],
+        responses={**UNAUTHORIZED, **NOT_FOUND},
+    )
     def trace(trace_id: str) -> list[dict]:
         try:
             return load_trace_by_id(trace_id, settings.trace_dir)

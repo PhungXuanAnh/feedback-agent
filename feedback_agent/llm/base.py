@@ -1,5 +1,6 @@
 """Provider-neutral LLM contract. Adding a provider = one class implementing LLMProvider
 plus one line in llm/__init__.py (see PROVIDERS)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,11 +10,16 @@ from typing import Any, Literal, Optional, Protocol
 class LLMError(RuntimeError):
     """Provider failure. `transient` errors (network, 429, 5xx) may be retried once."""
 
-    def __init__(self, message: str, transient: bool = False, usage: Optional[dict] = None,
-                 usage_unknown: bool = False):
+    def __init__(
+        self,
+        message: str,
+        transient: bool = False,
+        usage: Optional[dict] = None,
+        usage_unknown: bool = False,
+    ):
         super().__init__(message)
         self.transient = transient
-        self.usage = usage          # tokens the provider billed for this failed attempt, when it said so
+        self.usage = usage  # tokens the provider billed for this failed attempt, when it said so
         # True when tokens may have been consumed but are not known (answered without usage, or the connection
         # broke after the request was sent). False = known free: never reached the provider, or it rejected the call.
         self.usage_unknown = usage_unknown
@@ -73,5 +79,10 @@ class LLMProvider(Protocol):
     name: str
     model: str
 
-    def generate(self, messages: list[Message], tools: list[ToolSpec],
-                 tool_choice: ToolChoice, max_output_tokens: int = 2048) -> LLMTurn: ...
+    def generate(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        tool_choice: ToolChoice,
+        max_output_tokens: int = 2048,
+    ) -> LLMTurn: ...

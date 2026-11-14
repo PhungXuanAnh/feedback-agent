@@ -1,5 +1,6 @@
 """SQLite repository: seeded reference data (customers, tickets, invoices) plus the
 feedback / report / review tables. All SQL lives here so another DB can replace it."""
+
 from __future__ import annotations
 
 import csv
@@ -81,47 +82,81 @@ class Store:
     # ------------------------------------------------------- reference reads
     def customer_by_email(self, email: str) -> Optional[dict]:
         with self.conn() as connection:
-            row = connection.execute("SELECT * FROM customers WHERE lower(email)=lower(?)", (email,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM customers WHERE lower(email)=lower(?)", (email,)
+            ).fetchone()
         return dict(row) if row else None
 
     def customer_by_id(self, customer_id: str) -> Optional[dict]:
         with self.conn() as connection:
-            row = connection.execute("SELECT * FROM customers WHERE id=?", (customer_id,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM customers WHERE id=?", (customer_id,)
+            ).fetchone()
         return dict(row) if row else None
 
     def tickets_for(self, customer_id: str) -> list[dict]:
         with self.conn() as connection:
             rows = connection.execute(
                 "SELECT id AS ticket_id, subject, status, opened_at FROM tickets WHERE customer_id=? "
-                "ORDER BY opened_at DESC", (customer_id,)).fetchall()
+                "ORDER BY opened_at DESC",
+                (customer_id,),
+            ).fetchall()
         return [dict(row) for row in rows]
 
     def invoices_for(self, customer_id: str) -> list[dict]:
         with self.conn() as connection:
             rows = connection.execute(
                 "SELECT id AS invoice_id, amount, date, status FROM invoices WHERE customer_id=? "
-                "ORDER BY date DESC, id", (customer_id,)).fetchall()
+                "ORDER BY date DESC, id",
+                (customer_id,),
+            ).fetchall()
         return [dict(row) for row in rows]
 
     # ------------------------------------------------------ feedback / reports
-    def save_feedback(self, feedback: Any, flags_injection: bool, classification: Any, prompt_version: str,
-                      trace_id: str) -> None:
+    def save_feedback(
+        self,
+        feedback: Any,
+        flags_injection: bool,
+        classification: Any,
+        prompt_version: str,
+        trace_id: str,
+    ) -> None:
         with self.conn() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO feedback VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (feedback.feedback_id, feedback.customer_email, feedback.channel.value,
-                 feedback.received_at.isoformat(), feedback.text,
-                 int(flags_injection), classification.category.value, classification.sentiment.value,
-                 classification.urgency.value,
-                 classification.confidence, classification.classified_by, prompt_version, trace_id))
+                (
+                    feedback.feedback_id,
+                    feedback.customer_email,
+                    feedback.channel.value,
+                    feedback.received_at.isoformat(),
+                    feedback.text,
+                    int(flags_injection),
+                    classification.category.value,
+                    classification.sentiment.value,
+                    classification.urgency.value,
+                    classification.confidence,
+                    classification.classified_by,
+                    prompt_version,
+                    trace_id,
+                ),
+            )
 
     def save_report(self, report: Any, evidence: dict) -> None:
         with self.conn() as connection:
             connection.execute(
                 "INSERT INTO reports(id,feedback_id,status,payload_json,evidence_json,flags_json,"
                 "confidence_level,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                (report.report_id, report.feedback_id, report.status, report.model_dump_json(),
-                 json.dumps(evidence), json.dumps(report.flags), report.confidence_level, report.created_at))
+                (
+                    report.report_id,
+                    report.feedback_id,
+                    report.status,
+                    report.model_dump_json(),
+                    json.dumps(evidence),
+                    json.dumps(report.flags),
+                    report.confidence_level,
+                    report.created_at,
+                ),
+            )
 
     def get_report_row(self, report_id: str) -> Optional[dict]:
         with self.conn() as connection:
@@ -139,8 +174,9 @@ class Store:
     def usage_since(self, day_start_iso: str) -> tuple[int, int]:
         """(reports created at/after the timestamp, prompt+output tokens they used) for daily caps."""
         with self.conn() as connection:
-            rows = connection.execute("SELECT payload_json FROM reports WHERE created_at >= ?",
-                                      (day_start_iso,)).fetchall()
+            rows = connection.execute(
+                "SELECT payload_json FROM reports WHERE created_at >= ?", (day_start_iso,)
+            ).fetchall()
         tokens = 0
         for row in rows:
             counters = json.loads(row["payload_json"]).get("counters", {})
@@ -149,7 +185,9 @@ class Store:
 
     def reviews_for(self, report_id: str) -> list[dict]:
         with self.conn() as connection:
-            rows = connection.execute("SELECT * FROM reviews WHERE report_id=? ORDER BY id", (report_id,)).fetchall()
+            rows = connection.execute(
+                "SELECT * FROM reviews WHERE report_id=? ORDER BY id", (report_id,)
+            ).fetchall()
         return [dict(row) for row in rows]
 
     # ----------------------------------------------------------------- review
@@ -158,22 +196,35 @@ class Store:
         was no longer pending_review (somebody else decided first)."""
         with self.conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            cursor = connection.execute("UPDATE reports SET status=? WHERE id=? AND status='pending_review'",
-                                        (new_status, report_id))
+            cursor = connection.execute(
+                "UPDATE reports SET status=? WHERE id=? AND status='pending_review'",
+                (new_status, report_id),
+            )
             if cursor.rowcount != 1:
                 connection.execute("ROLLBACK")
                 return False
-            connection.execute("INSERT INTO reviews(report_id,actor,decision,overrides_json,note,at,machine_category,"
-                               "machine_urgency) VALUES(?,?,?,?,?,?,?,?)",
-                               (report_id, review["actor"], review["decision"], review.get("overrides_json"),
-                                review.get("note", ""), review["at"], review["machine_category"],
-                                review["machine_urgency"]))
+            connection.execute(
+                "INSERT INTO reviews(report_id,actor,decision,overrides_json,note,at,machine_category,"
+                "machine_urgency) VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    report_id,
+                    review["actor"],
+                    review["decision"],
+                    review.get("overrides_json"),
+                    review.get("note", ""),
+                    review["at"],
+                    review["machine_category"],
+                    review["machine_urgency"],
+                ),
+            )
             connection.execute("COMMIT")
             return True
 
     def mark_executed(self, report_id: str, at: str) -> bool:
         with self.conn() as connection:
-            cursor = connection.execute("UPDATE reports SET status='executed', executed_at=? WHERE id=? "
-                                        "AND status IN ('approved','overridden') AND executed_at IS NULL",
-                                        (at, report_id))
+            cursor = connection.execute(
+                "UPDATE reports SET status='executed', executed_at=? WHERE id=? "
+                "AND status IN ('approved','overridden') AND executed_at IS NULL",
+                (at, report_id),
+            )
             return cursor.rowcount == 1

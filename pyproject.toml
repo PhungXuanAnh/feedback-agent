@@ -16,13 +16,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx2"]
+dev = ["pytest>=8", "httpx2", "black>=24"]
 
 [tool.setuptools]
 packages = ["feedback_agent", "feedback_agent.llm"]
 
 [tool.setuptools.package-data]
 feedback_agent = ["prompts/*.md"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

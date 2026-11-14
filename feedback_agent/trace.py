@@ -1,4 +1,5 @@
 """Per-request JSONL trace: one line per step, so a reader can see HOW a report was reached."""
+
 from __future__ import annotations
 
 import json
@@ -53,9 +54,13 @@ class Tracer:
         self._started_at = time.monotonic()
 
     def emit(self, event: Event, **fields: Any) -> None:
-        record = {"seq": self._seq_offset + len(self.events) + 1,
-                  "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-                  "trace_id": self.trace_id, "event": event.value, **fields}
+        record = {
+            "seq": self._seq_offset + len(self.events) + 1,
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            "trace_id": self.trace_id,
+            "event": event.value,
+            **fields,
+        }
         self.events.append(record)
         if self._path:
             with open(self._path, "a", encoding="utf-8") as fh:
@@ -63,10 +68,21 @@ class Tracer:
 
     def cost_of(self, usage: Optional[dict]) -> Any:
         """Estimated USD; only when prices are configured AND the provider reported usage."""
-        if not usage or usage.get("prompt_tokens") is None or self._price_in is None or self._price_out is None:
+        if (
+            not usage
+            or usage.get("prompt_tokens") is None
+            or self._price_in is None
+            or self._price_out is None
+        ):
             return "unknown"
-        return round((usage["prompt_tokens"] * self._price_in + (usage.get("output_tokens") or 0)
-                      * self._price_out) / 1e6, 6)
+        return round(
+            (
+                usage["prompt_tokens"] * self._price_in
+                + (usage.get("output_tokens") or 0) * self._price_out
+            )
+            / 1e6,
+            6,
+        )
 
     def _account(self, usage: Optional[dict], unknown: bool) -> Any:
         """One provider attempt (successful or failed). Returns this attempt's cost: a number or "unknown"."""
@@ -78,7 +94,9 @@ class Tracer:
             if cost != "unknown":
                 self._cost_sum += cost
             return cost
-        if unknown:  # tokens may have been consumed but are not known: the totals below are a lower bound
+        if (
+            unknown
+        ):  # tokens may have been consumed but are not known: the totals below are a lower bound
             self._usage_missing += 1
         return "unknown"
 
@@ -95,13 +113,22 @@ class Tracer:
         """llm_calls = successful provider calls; provider_calls = every attempt incl. retries and failures.
         usage_complete covers the attempts that COULD have been billed: it is False when any such attempt has unknown
         usage (answered without usage, or the connection broke after sending); tokens and cost are then a lower bound.
-        Attempts that never reached the provider or were rejected with an HTTP error count as known-free."""
-        priced = self._price_in is not None and self._price_out is not None and self.prompt_tokens is not None
-        return {"llm_calls": self.llm_calls, "provider_calls": self.provider_calls,
-                "prompt_tokens": self.prompt_tokens, "output_tokens": self.output_tokens,
-                "cost_usd": round(self._cost_sum, 6) if priced else "unknown",
-                "usage_complete": self.provider_calls > 0 and self._usage_missing == 0,
-                "elapsed_ms": int((time.monotonic() - self._started_at) * 1000)}
+        Attempts that never reached the provider or were rejected with an HTTP error count as known-free.
+        """
+        priced = (
+            self._price_in is not None
+            and self._price_out is not None
+            and self.prompt_tokens is not None
+        )
+        return {
+            "llm_calls": self.llm_calls,
+            "provider_calls": self.provider_calls,
+            "prompt_tokens": self.prompt_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": round(self._cost_sum, 6) if priced else "unknown",
+            "usage_complete": self.provider_calls > 0 and self._usage_missing == 0,
+            "elapsed_ms": int((time.monotonic() - self._started_at) * 1000),
+        }
 
 
 def load_trace_by_id(trace_id: str, trace_dir: str) -> list[dict]:
@@ -124,6 +151,8 @@ def render_trace(events: list[dict]) -> str:
     for event in events:
         extra = {k: v for k, v in event.items() if k not in ("seq", "ts", "trace_id", "event")}
         body = json.dumps(extra, ensure_ascii=False, default=str)
-        lines.append(f"#{event['seq']:02d} {event['event']:<24} {body if len(body) < 400 else body[:400] + ' ...'}")
+        lines.append(
+            f"#{event['seq']:02d} {event['event']:<24} {body if len(body) < 400 else body[:400] + ' ...'}"
+        )
     head = f"trace {events[0]['trace_id']}" if events else "empty trace"
     return head + "\n" + "\n".join(lines)

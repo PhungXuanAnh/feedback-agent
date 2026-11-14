@@ -1,4 +1,5 @@
 """Settings read from the environment (and .env if present). No secrets in code."""
+
 from __future__ import annotations
 
 import os
@@ -37,10 +38,12 @@ class Settings:
     data_dir: str = str(ROOT / "data")
     # API protection for a shared/public deployment; every limit is off (0 / empty) unless set
     api_token: str = field(default="", repr=False)
-    rate_limit_per_min: int = 0       # POST /feedback per client IP
-    daily_request_limit: int = 0      # reports created per UTC day, all clients
-    daily_token_limit: int = 0        # prompt+output tokens per UTC day, all clients
-    trust_proxy: bool = False         # take the client IP from X-Forwarded-For (only behind your own proxy)
+    rate_limit_per_min: int = 0  # POST /feedback per client IP
+    daily_request_limit: int = 0  # reports created per UTC day, all clients
+    daily_token_limit: int = 0  # prompt+output tokens per UTC day, all clients
+    trust_proxy: bool = (
+        False  # take the client IP from X-Forwarded-For (only behind your own proxy)
+    )
 
     @classmethod
     def from_env(cls) -> "Settings":

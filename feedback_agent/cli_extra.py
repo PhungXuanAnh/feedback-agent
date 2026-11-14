@@ -1,4 +1,5 @@
 """Commands for the review queue, samples and the one-command demo."""
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,13 @@ def cmd_reports(args, settings: Settings) -> int:
 
 def cmd_show(args, settings: Settings) -> int:
     try:
-        print(json.dumps(ReviewService(open_store(settings), settings).get(args.report_id), indent=2,
-                         ensure_ascii=False))
+        print(
+            json.dumps(
+                ReviewService(open_store(settings), settings).get(args.report_id),
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         return 0
     except ReviewError as e:
         print(f"error: {e}", file=sys.stderr)
@@ -32,8 +38,12 @@ def cmd_review(args, settings: Settings) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     overrides = json.loads(Path(args.overrides).read_text("utf-8")) if args.overrides else None
     try:
-        review_result = ReviewService(open_store(settings), settings).review(args.report_id, ReviewRequest(
-            decision=args.decision, actor=args.actor, note=args.note or "", overrides=overrides))
+        review_result = ReviewService(open_store(settings), settings).review(
+            args.report_id,
+            ReviewRequest(
+                decision=args.decision, actor=args.actor, note=args.note or "", overrides=overrides
+            ),
+        )
     except ReviewError as e:
         print(f"error {e.status_code}: {e}", file=sys.stderr)
         return 1
@@ -44,17 +54,21 @@ def cmd_review(args, settings: Settings) -> int:
 def cmd_serve(args, settings: Settings) -> int:
     import uvicorn
     from .api import create_app
+
     uvicorn.run(create_app(settings), host=args.host, port=args.port)
     return 0
 
 
 def cmd_samples(args, settings: Settings) -> int:
     from .samples import run_samples
+
     modes = ["live", "scripted"] if args.mode == "both" else [args.mode]
     for meta in run_samples(settings, modes, args.only):
         ok = "ok " if meta["expectations_met"] else "MISMATCH"
-        print(f"{ok} {meta['sample']:<24} {meta['mode']:<9} by={meta['report_generated_by']:<18} "
-              f"trace={meta['trace_id']} {meta['unmet_expectations'] or ''}")
+        print(
+            f"{ok} {meta['sample']:<24} {meta['mode']:<9} by={meta['report_generated_by']:<18} "
+            f"trace={meta['trace_id']} {meta['unmet_expectations'] or ''}"
+        )
     return 0
 
 
@@ -62,6 +76,7 @@ def cmd_demo(args, settings: Settings) -> int:
     """Offline end-to-end demo (no API key): run one sample, show the trace, then approve it as an officer."""
     from .samples import SAMPLES, load_manifest
     from .trace import load_trace, render_trace
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     sample = next(candidate for candidate in load_manifest() if candidate["name"] == args.sample)
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -69,10 +84,16 @@ def cmd_demo(args, settings: Settings) -> int:
         from .bootstrap import build_pipeline
         from .samples import _fault_injector
         from .schemas import Feedback
+
         settings.llm_provider, settings.llm_retry_backoff_s = "scripted", 0.1
-        pipeline = build_pipeline(settings, script=str(SAMPLES / "scripts" / f"{sample['name']}.json"),
-                                  fault_injector=_fault_injector((sample.get("faults") or {}).get("inject_tool_fault")))
-        feedback = Feedback(**json.loads((SAMPLES / "inputs" / f"{sample['name']}.json").read_text("utf-8")))
+        pipeline = build_pipeline(
+            settings,
+            script=str(SAMPLES / "scripts" / f"{sample['name']}.json"),
+            fault_injector=_fault_injector((sample.get("faults") or {}).get("inject_tool_fault")),
+        )
+        feedback = Feedback(
+            **json.loads((SAMPLES / "inputs" / f"{sample['name']}.json").read_text("utf-8"))
+        )
         print(f"=== INPUT ({sample['title']})\n{feedback.text}\n")
         report = pipeline.process(feedback)
         print("=== REPORT\n" + report.model_dump_json(indent=2, exclude_none=True))
@@ -99,7 +120,9 @@ def register(subparsers) -> None:
     review_parser.add_argument("decision", choices=["approve", "override", "reject"])
     review_parser.add_argument("--actor", required=True)
     review_parser.add_argument("--note")
-    review_parser.add_argument("--overrides", help="JSON file with category/urgency/suggested_actions overrides")
+    review_parser.add_argument(
+        "--overrides", help="JSON file with category/urgency/suggested_actions overrides"
+    )
     review_parser.set_defaults(fn=cmd_review)
     serve_parser = subparsers.add_parser("serve", help="start the HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
@@ -120,6 +143,7 @@ def cmd_eval(args, settings: Settings) -> int:
     from .config import ROOT
     from .evaluation import load_cases, render_markdown, run_eval
     from .llm import get_provider
+
     if args.provider:
         settings.llm_provider = args.provider
     for setting_name in ("max_tool_calls",):
@@ -128,15 +152,27 @@ def cmd_eval(args, settings: Settings) -> int:
     cases = load_cases(args.cases)
     if args.only:
         cases = [case for case in cases if case["id"] in args.only.split(",")]
-    sweep = ([int(value) for value in args.sweep.split(",")] if args.sweep
-             else ([args.max_llm_turns] if args.max_llm_turns else None))
+    sweep = (
+        [int(value) for value in args.sweep.split(",")]
+        if args.sweep
+        else ([args.max_llm_turns] if args.max_llm_turns else None)
+    )
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    result = run_eval(settings, cases, lambda case: get_provider(settings), repeats=args.repeats, workers=args.workers,
-                      sweep=sweep,
-                      trace_root=str(out_dir / "traces"), progress=lambda message: print(message, file=sys.stderr))
+    result = run_eval(
+        settings,
+        cases,
+        lambda case: get_provider(settings),
+        repeats=args.repeats,
+        workers=args.workers,
+        sweep=sweep,
+        trace_root=str(out_dir / "traces"),
+        progress=lambda message: print(message, file=sys.stderr),
+    )
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    (out_dir / f"eval-{stamp}.json").write_text(json.dumps(result, indent=1, ensure_ascii=False), "utf-8")
+    (out_dir / f"eval-{stamp}.json").write_text(
+        json.dumps(result, indent=1, ensure_ascii=False), "utf-8"
+    )
     markdown = render_markdown(result)
     if args.markdown:
         Path(args.markdown).write_text(markdown + "\n", "utf-8")
@@ -149,7 +185,10 @@ def cmd_eval(args, settings: Settings) -> int:
 
 def register_eval(subparsers) -> None:
     from .config import ROOT
-    eval_parser = subparsers.add_parser("eval", help="run the labelled eval cases (needs a live provider)")
+
+    eval_parser = subparsers.add_parser(
+        "eval", help="run the labelled eval cases (needs a live provider)"
+    )
     eval_parser.add_argument("--cases", default=str(ROOT / "eval" / "cases.json"))
     eval_parser.add_argument("--provider")
     eval_parser.add_argument("--only", help="comma separated case ids")
