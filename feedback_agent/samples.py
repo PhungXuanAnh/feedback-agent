@@ -68,7 +68,7 @@ def check_expectations(report: Report, expect: dict[str, Any]) -> list[str]:
     return unmet
 
 
-def run_one(
+def run_sample(
     sample: dict,
     mode: str,
     settings: Settings,
@@ -114,7 +114,7 @@ def run_one(
             "fault_injection": faults or None,
             "expectations_met": not problems,
             "unmet_expectations": problems,
-            "notes": _notes(sample, mode, report),
+            "notes": _provenance_note(sample, mode, report),
         }
         if out_dir:
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -141,7 +141,7 @@ def _fault_injector(specs: Optional[list[str]]) -> FaultInjector:
     return injector
 
 
-def _notes(sample: dict, mode: str, report: Report) -> str:
+def _provenance_note(sample: dict, mode: str, report: Report) -> str:
     """Note for metadata.<mode>.json: who really wrote the report and what was injected."""
     faults = sample.get("faults")
     if mode == "live" and faults:
@@ -169,6 +169,6 @@ def run_samples(
         if only and sample["name"] != only:
             continue
         for mode in modes:
-            _, meta = run_one(sample, mode, settings, root, root / sample["name"])
+            _, meta = run_sample(sample, mode, settings, root, root / sample["name"])
             metas.append(meta)
     return metas

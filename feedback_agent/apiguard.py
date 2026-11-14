@@ -29,7 +29,7 @@ class ApiGuard:
         self._hits: dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def auth(self, key: Optional[str] = Security(token_header)) -> None:
+    def require_token(self, key: Optional[str] = Security(token_header)) -> None:
         """401 unless the X-API-Token header matches settings.api_token (no check when unset)."""
         if self.settings.api_token and not (
             key and secrets.compare_digest(key, self.settings.api_token)
@@ -43,7 +43,7 @@ class ApiGuard:
             return forwarded_for.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
-    def cost_guard(self, request: Request) -> None:
+    def enforce_spend_limits(self, request: Request) -> None:
         """For POST /feedback (the only call that spends LLM money): per-IP rate, then daily caps."""
         if self.settings.rate_limit_per_min:
             ip, now = self._client_ip(request), time.monotonic()
@@ -62,7 +62,7 @@ class ApiGuard:
         if self.settings.daily_request_limit or self.settings.daily_token_limit:
             day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             # persisted in SQLite, so restarts do not reset the cap
-            requests_today, tokens = self.database.usage_since(day)
+            requests_today, tokens = self.database.reports_and_tokens_since(day)
             if (
                 self.settings.daily_request_limit
                 and requests_today >= self.settings.daily_request_limit

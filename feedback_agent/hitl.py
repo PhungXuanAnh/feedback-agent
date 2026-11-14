@@ -81,7 +81,7 @@ class StubExecutor:
         return executed_calls
 
 
-def _snapshot(report: dict, overrides: Optional[Overrides] = None) -> dict:
+def _reviewable_fields(report: dict, overrides: Optional[Overrides] = None) -> dict:
     """The reviewable part of a report (category, urgency, actions, question), overrides applied.
 
     Saved as before/after in the audit row, so the machine's suggestion stays next to the final one.
@@ -158,7 +158,7 @@ class ReviewService:
                 exclude_none=True
             ):
                 raise OverrideRejected("override needs at least one change")
-            after = _snapshot(report, review_request.overrides)
+            after = _reviewable_fields(report, review_request.overrides)
             # the same validator that checked the machine's report checks the officer's final actions
             actions = [
                 SuggestedAction.model_validate(action) for action in after["suggested_actions"]
@@ -170,7 +170,7 @@ class ReviewService:
             )
             if issues:
                 raise OverrideRejected("; ".join(issues))
-            overrides_json = json.dumps({"before": _snapshot(report), "after": after})
+            overrides_json = json.dumps({"before": _reviewable_fields(report), "after": after})
         new_status = {"approve": "approved", "override": "overridden", "reject": "rejected"}[
             review_request.decision
         ]
@@ -195,7 +195,10 @@ class ReviewService:
                 first["decision"] == review_request.decision
                 and first["overrides_json"] == overrides_json
             ):
-                return {**self._result(report_id, review_request.decision), "idempotent": True}
+                return {
+                    **self._decision_result(report_id, review_request.decision),
+                    "idempotent": True,
+                }
             raise ReviewConflict(f"report already {first['decision']} by {first['actor']}")
         execution = None
         if review_request.decision != "reject":
@@ -212,12 +215,12 @@ class ReviewService:
             status=status,
         )
         return {
-            **self._result(report_id, review_request.decision),
+            **self._decision_result(report_id, review_request.decision),
             "idempotent": False,
             "execution": execution,
         }
 
-    def _result(self, report_id: str, decision: str) -> dict[str, Any]:
+    def _decision_result(self, report_id: str, decision: str) -> dict[str, Any]:
         """Short outcome of a decision: report id, decision, current status, executed or not."""
         row = self.database.get_report_row(report_id)
         return {
@@ -228,7 +231,7 @@ class ReviewService:
         }
 
 
-def pending_summary(row: dict) -> dict:
+def report_summary(row: dict) -> dict:
     """One row of the review queue: the fields an officer needs to pick a report."""
     report = json.loads(row["payload_json"])
     return {

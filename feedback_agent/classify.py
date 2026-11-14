@@ -54,7 +54,7 @@ _SEVERE = re.compile(
 )
 
 
-def apply_floor(classification: Classification, text: str) -> Classification:
+def apply_safety_rules(classification: Classification, text: str) -> Classification:
     """Code-owned safety rules on top of a classification; they can only RAISE urgency.
 
     security_concern or a severe word (breach, lawsuit, ...) -> at least high; unclear or
@@ -102,7 +102,7 @@ _KEYWORDS = [
 _ABUSIVE = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|damn)\b", re.I)
 
 
-def keyword_classify(text: str) -> Classification:
+def classify_by_keywords(text: str) -> Classification:
     """Degraded path when the LLM is unavailable: coarse, never confident, always sent to triage.
 
     The first matching keyword rule wins (security first): "charged twice" -> billing_issue.
@@ -123,14 +123,14 @@ def keyword_classify(text: str) -> Classification:
         rationale="keyword rules (LLM unavailable)",
         classified_by="keyword_rules",
     )
-    return apply_floor(classification, text)
+    return apply_safety_rules(classification, text)
 
 
 def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
-    """Classify with ONE forced classify_feedback call, then apply_floor.
+    """Classify with ONE forced classify_feedback call, then apply_safety_rules.
 
     Raises LLMUnavailable when the provider fails or the answer is missing or invalid; the
-    pipeline then uses keyword_classify.
+    pipeline then uses classify_by_keywords.
     """
     messages = [
         Message("system", load_prompt(CLASSIFY_PROMPT)),
@@ -154,4 +154,4 @@ def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
     except ValidationError as e:
         raise LLMUnavailable(f"invalid classification: {e.error_count()} schema errors") from e
     classification = Classification(**args.model_dump(), classified_by="llm")
-    return apply_floor(classification, feedback.text)
+    return apply_safety_rules(classification, feedback.text)

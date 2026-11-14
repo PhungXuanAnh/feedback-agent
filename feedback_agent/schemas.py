@@ -78,7 +78,7 @@ class Feedback(BaseModel):
 
     @field_validator("customer_email")
     @classmethod
-    def _email(cls, v: str) -> str:
+    def _normalize_email(cls, v: str) -> str:
         """Trim and lowercase the email; reject anything that is not name@domain.tld."""
         v = v.strip().lower()
         if not _EMAIL_RE.match(v):
@@ -87,7 +87,7 @@ class Feedback(BaseModel):
 
     @field_validator("text")
     @classmethod
-    def _text(cls, v: str) -> str:
+    def _normalize_text(cls, v: str) -> str:
         """Trim the text; reject a message that is only whitespace."""
         v = v.strip()
         if not v:

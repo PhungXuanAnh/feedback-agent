@@ -16,7 +16,7 @@ _MONEY = re.compile(r"(?:\$\s?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\s?(?
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
-def _norm(number: str) -> str:
+def _normalize_number(number: str) -> str:
     """Number text for comparison: "1,249.50" -> "1249.5", "49.0" and "49.00" -> "49"."""
     number = number.replace(",", "")
     return (
@@ -39,13 +39,17 @@ _AFTER_CHARGE_WORD = re.compile(
 )
 
 
-def feedback_money(text: str) -> set[str]:
+def money_in_feedback(text: str) -> set[str]:
     """Money amounts the customer wrote, normalised (rules in the comment above _TIME_UNIT).
 
     Example: "charged $49.00 twice, 37.5 days ago, INV-5005, paid 1,249.50" -> {"49", "1249.5"}.
     """
-    marked = {_norm(match.group(1) or match.group(2)) for match in _MONEY.finditer(text)}
-    return marked | {_norm(match.group(1)) for match in _AFTER_CHARGE_WORD.finditer(text)}
+    marked = {
+        _normalize_number(match.group(1) or match.group(2)) for match in _MONEY.finditer(text)
+    }
+    return marked | {
+        _normalize_number(match.group(1)) for match in _AFTER_CHARGE_WORD.finditer(text)
+    }
 
 
 def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[str]:
@@ -55,15 +59,15 @@ def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[
     cap; an ISO date must appear in the feedback or a tool result. What the sentence CLAIMS
     about them is not checked.
     """
-    known = feedback_money(feedback_text) | evidence.money_values()
+    known = money_in_feedback(feedback_text) | evidence.money_values()
     issues = []
     for match in _MONEY.finditer(summary):
-        if _norm(match.group(1) or match.group(2)) not in known:
+        if _normalize_number(match.group(1) or match.group(2)) not in known:
             issues.append(
                 f"summary mentions amount {match.group(0).strip()!r} that is not a money amount in the "
                 "feedback, an invoice of this customer or a policy limit"
             )
-    source = feedback_text + " " + evidence.numbers_text()
+    source = feedback_text + " " + evidence.as_text()
     for date_text in _ISO_DATE.findall(summary):
         if date_text not in source:
             issues.append(
@@ -172,11 +176,11 @@ def validate_actions(
         if not action.basis:
             issues.append(f"{tag}: basis is empty; cite guideline/policy ids from tool results")
             continue
-        unknown = [basis_id for basis_id in action.basis if evidence.record_for(basis_id) is None]
+        unknown = [basis_id for basis_id in action.basis if evidence.record_by_id(basis_id) is None]
         if unknown:
             issues.append(f"{tag}: basis ids not found in this run's tool results: {unknown}")
         if not any(
-            (record := evidence.record_for(basis_id))
+            (record := evidence.record_by_id(basis_id))
             and action.type.value in record["allowed_actions"]
             for basis_id in action.basis
         ):

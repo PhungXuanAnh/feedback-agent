@@ -198,7 +198,7 @@ class KnowledgeBase:
             json.loads((directory / "policies.json").read_text("utf-8")),
         )
 
-    def guideline_for(self, category: str) -> Optional[dict]:
+    def guideline_for_category(self, category: str) -> Optional[dict]:
         """The CS guideline of a category (one per category), or None."""
         return next(
             (guideline for guideline in self.guidelines if guideline["category"] == category), None
@@ -328,7 +328,7 @@ def duplicate_charge_candidates(invoices: list[dict], max_gap_days: int = 3) -> 
 # ------------------------------------------------------------------ tool bodies
 def _get_cs_guidelines(tool_context: ToolContext, args: GuidelinesArgs) -> ToolResult:
     """Tool body: the guideline of the requested category, or not_found."""
-    guideline = tool_context.knowledge_base.guideline_for(args.category.value)
+    guideline = tool_context.knowledge_base.guideline_for_category(args.category.value)
     if not guideline:
         return ToolResult(
             "get_cs_guidelines",

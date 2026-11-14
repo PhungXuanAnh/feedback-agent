@@ -13,7 +13,7 @@ from .apiguard import ApiGuard
 from .bootstrap import build_pipeline, open_database
 from .config import Settings
 from .database import StorageError
-from .hitl import ReviewError, ReviewRequest, ReviewService, pending_summary
+from .hitl import ReviewError, ReviewRequest, ReviewService, report_summary
 from .llm import ConfigError
 from .pipeline import FeedbackPipeline
 from .schemas import Category, Channel, Feedback, Report, SuggestedAction, Urgency
@@ -115,7 +115,7 @@ def create_app(
     database = pipeline.database if pipeline else open_database(settings)
     reviews = ReviewService(database, settings)
     guard = ApiGuard(settings, database)
-    protected = [Depends(guard.auth)]  # /health and the API docs stay open
+    protected = [Depends(guard.require_token)]  # /health and the API docs stay open
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -125,7 +125,7 @@ def create_app(
     @app.post(
         "/feedback",
         status_code=201,
-        dependencies=[Depends(guard.auth), Depends(guard.cost_guard)],
+        dependencies=[Depends(guard.require_token), Depends(guard.enforce_spend_limits)],
         responses={
             **UNAUTHORIZED,
             429: {"model": ErrorMessage, "description": "Rate limit or daily cap reached"},
@@ -161,7 +161,7 @@ def create_app(
     )
     def list_reports(status: Optional[str] = None) -> list[dict]:
         """List reports, optionally of one status (e.g. pending_review)."""
-        return [pending_summary(row) for row in database.list_reports(status)]
+        return [report_summary(row) for row in database.list_reports(status)]
 
     @app.get(
         "/reports/{report_id}",

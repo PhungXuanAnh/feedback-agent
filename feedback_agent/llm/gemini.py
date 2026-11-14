@@ -85,7 +85,7 @@ class GeminiProvider:
         self._client = client or httpx.Client(timeout=timeout)
 
     # -------------------------------------------------------------- request
-    def _contents(self, messages: list[Message]) -> tuple[Optional[dict], list[dict]]:
+    def _to_gemini_contents(self, messages: list[Message]) -> tuple[Optional[dict], list[dict]]:
         """Our messages -> Gemini's (system_instruction, contents).
 
         System messages are merged; model turns are replayed from `raw`; a tool message becomes ONE
@@ -140,7 +140,7 @@ class GeminiProvider:
 
         ToolChoice "required" becomes Gemini mode "ANY"; `allowed` becomes allowedFunctionNames.
         """
-        system, contents = self._contents(messages)
+        system, contents = self._to_gemini_contents(messages)
         body: dict[str, Any] = {
             "contents": contents,
             "generationConfig": {"maxOutputTokens": max_output_tokens},
@@ -244,7 +244,7 @@ class GeminiProvider:
         """
         usage = cls._usage(payload)
         try:
-            turn = cls._parse(payload)
+            turn = cls._extract_turn(payload)
         except LLMError as e:
             e.usage, e.usage_unknown = usage, usage is None
             raise
@@ -252,7 +252,7 @@ class GeminiProvider:
         return turn
 
     @staticmethod
-    def _parse(payload: Any) -> LLMTurn:
+    def _extract_turn(payload: Any) -> LLMTurn:
         """Tool calls and visible text (thought parts skipped) of the first candidate.
 
         Blocked, empty or malformed answers raise LLMError; transient ones are worth a retry.

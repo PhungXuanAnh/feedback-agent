@@ -67,11 +67,11 @@ class Evidence:
         """Policy returned by search_policies in this run; None if the LLM never saw it."""
         return self.policies.get(policy_id)
 
-    def record_for(self, ident: str) -> Optional[dict]:
+    def record_by_id(self, ident: str) -> Optional[dict]:
         """Guideline or policy with this id; the validator checks every cited basis id with it."""
         return self.guideline(ident) or self.policy(ident)
 
-    def all_ids(self) -> set[str]:
+    def citable_ids(self) -> set[str]:
         """Every guideline and policy id a report may cite."""
         return set(self.guidelines) | set(self.policies) | set(self.system_evidence)
 
@@ -94,7 +94,7 @@ class Evidence:
             normalized.add(text)
         return normalized
 
-    def numbers_text(self) -> str:
+    def as_text(self) -> str:
         """All evidence as one string, so the validator can look a date up in it."""
         return str(self.to_dict())
 

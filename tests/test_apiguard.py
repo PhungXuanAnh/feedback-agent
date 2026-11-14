@@ -53,7 +53,7 @@ def test_token_rate_limit_and_daily_caps(database, kb, tmp_path):
     ]
     c = _client(database, kb, tmp_path, used, daily_token_limit=1000)
     assert (
-        database.usage_since("2000-01-01")[0] == 2
+        database.reports_and_tokens_since("2000-01-01")[0] == 2
         and c.post("/feedback", json=BODY).status_code == 201
     )
     assert (

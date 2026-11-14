@@ -8,7 +8,7 @@ from typing import Optional
 
 from . import guard
 from .agent import AgentLoop, RunState, ToolExecutor, policy_query
-from .classify import classify, keyword_classify
+from .classify import classify, classify_by_keywords
 from .config import Settings
 from .database import Database
 from .evidence import SYSTEM_GUIDELINE, Evidence
@@ -65,7 +65,7 @@ class FeedbackPipeline:
             prompt_versions=PROMPT_VERSIONS,
         )
         flags: set[str] = set()
-        injection_patterns = guard.scan(feedback.text)
+        injection_patterns = guard.find_injection_patterns(feedback.text)
         if injection_patterns:
             flags.add("injection_suspected")
             tracer.emit(Event.injection_guard, source="feedback", patterns=injection_patterns)
@@ -76,7 +76,7 @@ class FeedbackPipeline:
             classification = classify(llm_caller, feedback)
         except LLMUnavailable as e:
             llm_ok = False
-            classification = keyword_classify(feedback.text)
+            classification = classify_by_keywords(feedback.text)
             tracer.emit(
                 Event.degraded_path, step="classify", reason=str(e)[:200], fallback="keyword_rules"
             )
@@ -109,7 +109,7 @@ class FeedbackPipeline:
         draft, failed, rejected, reason, turns = None, {}, None, "", 0
         generated_by = self.provider.name
         if llm_ok:
-            agent_result = AgentLoop(run_state, tool_executor, llm_caller, settings).loop()
+            agent_result = AgentLoop(run_state, tool_executor, llm_caller, settings).run()
             draft, turns, failed = (
                 agent_result.draft,
                 agent_result.llm_turns,
@@ -134,7 +134,7 @@ class FeedbackPipeline:
             if (
                 not failed
             ):  # incomplete_context already knows which source is down: no point asking again
-                failed = self._degraded_lookups(run_state, tool_executor, tracer, reason)
+                failed = self._run_degraded_lookups(run_state, tool_executor, tracer, reason)
             generated_by = "degraded_template"
 
         counters = {"llm_turns": turns, **tool_executor.counters(), **tracer.totals()}
@@ -176,7 +176,7 @@ class FeedbackPipeline:
         return report
 
     @staticmethod
-    def _degraded_lookups(
+    def _run_degraded_lookups(
         run_state: RunState, tool_executor: ToolExecutor, tracer: Tracer, reason: str
     ) -> dict:
         """No-LLM path: keep everything that already succeeded, call only the missing sources.

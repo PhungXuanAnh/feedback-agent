@@ -41,7 +41,7 @@ class Database:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
-    def conn(self) -> Iterator[sqlite3.Connection]:
+    def connect(self) -> Iterator[sqlite3.Connection]:
         """A connection for one block of work, then closed; sqlite3 errors become StorageError.
 
         Autocommit mode: writes that need several statements use explicit BEGIN/COMMIT.
@@ -61,7 +61,7 @@ class Database:
     # ------------------------------------------------------------------ seed
     def init_schema(self) -> None:
         """Create the tables if they do not exist yet."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             connection.executescript(SCHEMA)
 
     def seed_from_csv(self, seed_dir: str | Path) -> dict[str, int]:
@@ -69,7 +69,7 @@ class Database:
         seed_dir = Path(seed_dir)
         counts: dict[str, int] = {}
         self.init_schema()
-        with self.conn() as connection:
+        with self.connect() as connection:
             connection.execute("BEGIN")
             for table in ("customers", "tickets", "invoices"):
                 with open(seed_dir / f"{table}.csv", newline="", encoding="utf-8") as fh:
@@ -88,7 +88,7 @@ class Database:
     # ------------------------------------------------------- reference reads
     def customer_by_email(self, email: str) -> Optional[dict]:
         """Customer row for this email (case-insensitive), or None."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             row = connection.execute(
                 "SELECT * FROM customers WHERE lower(email)=lower(?)", (email,)
             ).fetchone()
@@ -96,7 +96,7 @@ class Database:
 
     def customer_by_id(self, customer_id: str) -> Optional[dict]:
         """Customer row for this id, or None."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             row = connection.execute(
                 "SELECT * FROM customers WHERE id=?", (customer_id,)
             ).fetchone()
@@ -104,7 +104,7 @@ class Database:
 
     def tickets_for(self, customer_id: str) -> list[dict]:
         """The customer's tickets, newest first."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id AS ticket_id, subject, status, opened_at FROM tickets WHERE customer_id=? "
                 "ORDER BY opened_at DESC",
@@ -114,7 +114,7 @@ class Database:
 
     def invoices_for(self, customer_id: str) -> list[dict]:
         """The customer's invoices, newest first."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             rows = connection.execute(
                 "SELECT id AS invoice_id, amount, date, status FROM invoices WHERE customer_id=? "
                 "ORDER BY date DESC, id",
@@ -132,7 +132,7 @@ class Database:
         trace_id: str,
     ) -> None:
         """Insert or replace the feedback row with its classification (audit and analytics)."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO feedback VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -154,7 +154,7 @@ class Database:
 
     def save_report(self, report: Any, evidence: dict) -> None:
         """Insert a new report together with the evidence it was built from."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             connection.execute(
                 "INSERT INTO reports(id,feedback_id,status,payload_json,evidence_json,flags_json,"
                 "confidence_level,created_at) VALUES(?,?,?,?,?,?,?,?)",
@@ -172,7 +172,7 @@ class Database:
 
     def get_report_row(self, report_id: str) -> Optional[dict]:
         """Raw reports row (payload and evidence still JSON strings), or None."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             row = connection.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
         return dict(row) if row else None
 
@@ -181,13 +181,13 @@ class Database:
         query, args = "SELECT * FROM reports", ()
         if status:
             query, args = query + " WHERE status=?", (status,)
-        with self.conn() as connection:
+        with self.connect() as connection:
             rows = connection.execute(query + " ORDER BY created_at, id", args).fetchall()
         return [dict(row) for row in rows]
 
-    def usage_since(self, day_start_iso: str) -> tuple[int, int]:
+    def reports_and_tokens_since(self, day_start_iso: str) -> tuple[int, int]:
         """(reports created at/after the timestamp, prompt+output tokens they used) for daily caps."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             rows = connection.execute(
                 "SELECT payload_json FROM reports WHERE created_at >= ?", (day_start_iso,)
             ).fetchall()
@@ -199,7 +199,7 @@ class Database:
 
     def reviews_for(self, report_id: str) -> list[dict]:
         """Audit rows of a report in the order they were written."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM reviews WHERE report_id=? ORDER BY id", (report_id,)
             ).fetchall()
@@ -209,7 +209,7 @@ class Database:
     def apply_review(self, report_id: str, new_status: str, review: dict) -> bool:
         """Conditional status change + audit row in ONE transaction. Returns False when the report
         was no longer pending_review (somebody else decided first)."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
                 "UPDATE reports SET status=? WHERE id=? AND status='pending_review'",
@@ -237,7 +237,7 @@ class Database:
 
     def mark_executed(self, report_id: str, at: str) -> bool:
         """Mark an approved/overridden report executed; False if it was not in that state."""
-        with self.conn() as connection:
+        with self.connect() as connection:
             cursor = connection.execute(
                 "UPDATE reports SET status='executed', executed_at=? WHERE id=? "
                 "AND status IN ('approved','overridden') AND executed_at IS NULL",

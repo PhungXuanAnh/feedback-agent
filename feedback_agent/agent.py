@@ -125,7 +125,7 @@ class ToolExecutor:
         """Run one tool call under the run's rules and return its result (never raises).
 
         Order: cache hit -> budget (only origin="llm" counts against max_tool_calls) -> run_tool,
-        retried once if retryable -> _finish. origin: llm, forced_by_system (last-turn lookups)
+        retried once if retryable -> _record_result. origin: llm, forced_by_system (last-turn lookups)
         or degraded (no-LLM path).
         """
         tracer, cache_key = self.run_state.tracer, self._cache_key(name, args)
@@ -190,10 +190,10 @@ class ToolExecutor:
                     message=tool_result.message,
                 )
             break
-        self._finish(tool_result, name, cache_key)
+        self._record_result(tool_result, name, cache_key)
         return tool_result
 
-    def _finish(self, tool_result: ToolResult, name: str, cache_key: str) -> None:
+    def _record_result(self, tool_result: ToolResult, name: str, cache_key: str) -> None:
         """Book a result: evidence, flags, failed sources and an injection scan of its data.
 
         Successes and LLM mistakes (out_of_scope, invalid_arguments) are cached; source errors are
@@ -206,7 +206,11 @@ class ToolExecutor:
                 self.failed_sources[tool_result.source] = tool_result.error
         else:
             self.failed_sources.pop(tool_result.source, None)
-            hits = guard.scan(json.dumps(tool_result.data, default=str)) if tool_result.data else []
+            hits = (
+                guard.find_injection_patterns(json.dumps(tool_result.data, default=str))
+                if tool_result.data
+                else []
+            )
             if hits:
                 self.run_state.flags.add("injection_in_tool_result")
                 self.run_state.tracer.emit(
@@ -253,7 +257,7 @@ class AgentLoop:
         self.tool_executor, self.llm_caller = tool_executor, llm_caller
 
     # -------------------------------------------------------------- prompts
-    def _opening(self) -> str:
+    def _first_user_message(self) -> str:
         """First user message: escaped feedback, metadata, fixed classification, flags, budget."""
         feedback, classification = self.run_state.feedback, self.run_state.classification
         alternatives = (
@@ -293,7 +297,7 @@ class AgentLoop:
             payload["error"] = tool_result.error
         return payload
 
-    def _forced_lookups(self, messages: list[Message]) -> None:
+    def _run_forced_lookups(self, messages: list[Message]) -> None:
         """Last turn with sources still missing: the system runs those lookups itself.
 
         Arguments come from code (category, metadata email, policy_query); the results are added
@@ -329,14 +333,17 @@ class AgentLoop:
         last = messages[-1]
         last.text = (last.text + "\n\n" if last.text else "") + note
 
-    def loop(self) -> AgentResult:
+    def run(self) -> AgentResult:
         """Converse until a draft is accepted or a stop rule fires; return the outcome.
 
         Outcomes: submitted, grounding_failed, incomplete_context, llm_unavailable,
         budget_exhausted. The last turn only offers submit_report (ToolChoice "required").
         """
         run_state, evidence, settings = self.run_state, self.run_state.evidence, self.settings
-        messages = [Message("system", load_prompt(AGENT_PROMPT)), Message("user", self._opening())]
+        messages = [
+            Message("system", load_prompt(AGENT_PROMPT)),
+            Message("user", self._first_user_message()),
+        ]
         fix_used, turns = False, 0
         for turn in range(1, settings.max_llm_turns + 1):
             final_turn = turn == settings.max_llm_turns
@@ -351,7 +358,7 @@ class AgentLoop:
 
             if final_turn:
                 if evidence.missing_sources:
-                    self._forced_lookups(messages)
+                    self._run_forced_lookups(messages)
                     if evidence.missing_sources:
                         failed_sources = dict(self.tool_executor.failed_sources) or dict(
                             evidence.source_errors

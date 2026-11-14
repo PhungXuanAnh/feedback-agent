@@ -20,7 +20,7 @@ PATTERNS = {
 _COMPILED = {k: re.compile(v, re.I | re.S) for k, v in PATTERNS.items()}
 
 
-def scan(text: str) -> list[str]:
+def find_injection_patterns(text: str) -> list[str]:
     """Names of the injection patterns that match (empty = nothing suspicious)."""
     return [name for name, rx in _COMPILED.items() if rx.search(text)]
 

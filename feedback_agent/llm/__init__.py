@@ -24,7 +24,7 @@ class ConfigError(ValueError):
     pass
 
 
-def _gemini(settings: Settings, **_: Any) -> LLMProvider:
+def _make_gemini(settings: Settings, **_: Any) -> LLMProvider:
     """Build the Gemini provider; ConfigError if the API key or the model is not set."""
     if not settings.llm_api_key:
         raise ConfigError(
@@ -42,7 +42,7 @@ def _gemini(settings: Settings, **_: Any) -> LLMProvider:
     )
 
 
-def _scripted(settings: Settings, script: Any = None, **_: Any) -> LLMProvider:
+def _make_scripted(settings: Settings, script: Any = None, **_: Any) -> LLMProvider:
     """Build the scripted provider from a list of turns or a JSON file path."""
     if script is None:
         raise ConfigError(
@@ -53,7 +53,10 @@ def _scripted(settings: Settings, script: Any = None, **_: Any) -> LLMProvider:
     )
 
 
-PROVIDERS: dict[str, Callable[..., LLMProvider]] = {"gemini": _gemini, "scripted": _scripted}
+PROVIDERS: dict[str, Callable[..., LLMProvider]] = {
+    "gemini": _make_gemini,
+    "scripted": _make_scripted,
+}
 
 
 def get_provider(settings: Settings, **kwargs: Any) -> LLMProvider:

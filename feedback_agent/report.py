@@ -93,7 +93,7 @@ def _excerpt(text: str, n: int = 200) -> str:
     return cut + "..."
 
 
-def template_draft(
+def build_template_draft(
     feedback: Feedback,
     classification: Classification,
     evidence: Evidence,
@@ -189,7 +189,7 @@ def build_report(
 ) -> Report:
     """Final Report from the classification, evidence and draft (from the LLM or the template).
 
-    No draft -> template_draft + the "degraded" flag. Code, not the LLM, adds the flags
+    No draft -> build_template_draft + the "degraded" flag. Code, not the LLM, adds the flags
     (unverified_customer, incomplete_context:..., enterprise outage floor, ...), decides
     needs_human_triage and computes the confidence.
     """
@@ -197,7 +197,9 @@ def build_report(
     flags = set(flags)
     if draft is None:
         flags.add("degraded")
-        draft = template_draft(feedback, classification, evidence, template_reason, failed_sources)
+        draft = build_template_draft(
+            feedback, classification, evidence, template_reason, failed_sources
+        )
         problems = validate_draft(draft, evidence, feedback.text)
         assert (
             not problems

@@ -90,7 +90,7 @@ class Tracer:
             6,
         )
 
-    def _account(self, usage: Optional[dict], unknown: bool) -> Any:
+    def _add_usage(self, usage: Optional[dict], unknown: bool) -> Any:
         """Add one provider attempt to the totals; return its cost (a number or "unknown")."""
         self.provider_calls += 1
         if usage and usage.get("prompt_tokens") is not None:
@@ -109,12 +109,12 @@ class Tracer:
     def record_llm_call(self, usage: Optional[dict], **fields: Any) -> None:
         """Count a successful LLM call and emit llm_call with its tokens and cost."""
         self.llm_calls += 1
-        cost = self._account(usage, True)
+        cost = self._add_usage(usage, True)
         self.emit(Event.llm_call, usage=usage, cost_usd=cost, **fields)
 
     def record_failed_attempt(self, usage: Optional[dict], unknown: bool, **fields: Any) -> None:
         """Emit llm_error; `unknown` = tokens may have been billed but were not reported."""
-        cost = self._account(usage, unknown)
+        cost = self._add_usage(usage, unknown)
         self.emit(Event.llm_error, usage=usage, cost_usd=cost, **fields)
 
     def totals(self) -> dict[str, Any]:

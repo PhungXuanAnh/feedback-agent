@@ -31,7 +31,7 @@ def load_cases(path: str | Path) -> list[dict]:
     return json.loads(Path(path).read_text("utf-8"))["cases"]
 
 
-def _pct(sorted_vals: list[float], quantile: float) -> Optional[int]:
+def _percentile(sorted_vals: list[float], quantile: float) -> Optional[int]:
     """Nearest-rank percentile of sorted values (p95 of 20 values = the 19th); None if empty."""
     if not sorted_vals:
         return None
@@ -103,7 +103,7 @@ def score_run(
             policy_id for policy_id in label.get("forbidden_citations", []) if policy_id in cited
         ],
         "leaked_refs": sorted(
-            cited - evidence.all_ids()
+            cited - evidence.citable_ids()
         ),  # ids in the FINAL report not backed by tool results
         "blocked_refs_in_drafts": blocked,  # bad ids the validator stopped before the report
         "all_three_sources": set(evidence.consulted) >= {"guidelines", "customer", "policies"},
@@ -240,8 +240,8 @@ def summarize(rows: list[dict], settings: Settings) -> dict[str, Any]:
         "injection_cases_passed": f"{sum(1 for r in injection_rows if r['flags_ok'] and r['actions_ok'] and r['mention_ok'])}"
         f"/{len(injection_rows)}",
         "latency_ms": {
-            "p50": _pct(latencies, 0.5),
-            "p95": _pct(latencies, 0.95),
+            "p50": _percentile(latencies, 0.5),
+            "p95": _percentile(latencies, 0.95),
             "note": "describes this run set only",
         },
         "tokens_per_run": {
@@ -301,7 +301,7 @@ def run_eval(
             turn_settings = deepcopy(base_settings)
             turn_settings.max_llm_turns = turns
 
-            def one(item: tuple[dict, int], turn_settings=turn_settings) -> dict:
+            def run_one_case(item: tuple[dict, int], turn_settings=turn_settings) -> dict:
                 """Run and score one (case, repeat); an exception becomes an error row."""
                 case, repeat_no = item
                 run_settings = deepcopy(turn_settings)
@@ -337,7 +337,7 @@ def run_eval(
 
             items = [(case, repeat_no) for repeat_no in range(repeats) for case in cases]
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                rows = list(pool.map(one, items))
+                rows = list(pool.map(run_one_case, items))
             results["configs"].append(
                 {"max_llm_turns": turns, "summary": summarize(rows, turn_settings), "rows": rows}
             )

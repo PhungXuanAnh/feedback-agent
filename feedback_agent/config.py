@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _opt_float(name: str) -> Optional[float]:
+def _optional_float_env(name: str) -> Optional[float]:
     """Read an optional float env var (e.g. PRICE_PER_MTOK_IN); unset or empty -> None."""
     v = os.getenv(name, "").strip()
     return float(v) if v else None
@@ -56,13 +56,13 @@ class Settings:
             llm_model=e("LLM_MODEL", "").strip(),
             llm_api_key=e("GEMINI_API_KEY") or e("LLM_API_KEY", ""),
             llm_base_url=e("LLM_BASE_URL", "https://generativelanguage.googleapis.com"),
-            llm_temperature=_opt_float("LLM_TEMPERATURE"),
+            llm_temperature=_optional_float_env("LLM_TEMPERATURE"),
             llm_thinking_level=e("LLM_THINKING_LEVEL", "").strip().lower(),
             max_llm_turns=int(e("MAX_LLM_TURNS", "4")),
             max_tool_calls=int(e("MAX_TOOL_CALLS", "6")),
             max_output_tokens=int(e("MAX_OUTPUT_TOKENS", "8192")),
-            price_in=_opt_float("PRICE_PER_MTOK_IN"),
-            price_out=_opt_float("PRICE_PER_MTOK_OUT"),
+            price_in=_optional_float_env("PRICE_PER_MTOK_IN"),
+            price_out=_optional_float_env("PRICE_PER_MTOK_OUT"),
             database_path=e("DATABASE_PATH", str(ROOT / "data" / "feedback_agent.db")),
             trace_dir=e("TRACE_DIR", str(ROOT / "traces")),
             api_token=e("API_TOKEN", ""),

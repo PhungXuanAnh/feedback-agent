@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     seed_parser.set_defaults(fn=cmd_seed)
     from . import cli_extra  # review / reports / eval / serve / demo
 
-    cli_extra.register(subparsers)
+    cli_extra.register_commands(subparsers)
     args = parser.parse_args(argv)
     return args.fn(args, settings)
 

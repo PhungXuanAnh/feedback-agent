@@ -10,13 +10,13 @@ from pathlib import Path
 
 from .bootstrap import open_database
 from .config import Settings
-from .hitl import ReviewError, ReviewRequest, ReviewService, pending_summary
+from .hitl import ReviewError, ReviewRequest, ReviewService, report_summary
 
 
 def cmd_reports(args, settings: Settings) -> int:
     """`reports`: print one summary line per report, optionally only --status."""
     for row in open_database(settings).list_reports(args.status):
-        print(json.dumps(pending_summary(row)))
+        print(json.dumps(report_summary(row)))
     return 0
 
 
@@ -106,14 +106,14 @@ def cmd_demo(args, settings: Settings) -> int:
         review_service = ReviewService(pipeline.database, settings)
         print("\n=== REVIEW QUEUE (pending_review)")
         for row in pipeline.database.list_reports("pending_review"):
-            print(json.dumps(pending_summary(row)))
+            print(json.dumps(report_summary(row)))
         print("\n=== OFFICER APPROVES")
         approval = ReviewRequest(decision="approve", actor="demo.officer")
         print(json.dumps(review_service.review(report.report_id, approval), indent=2))
     return 0
 
 
-def register(subparsers) -> None:
+def register_commands(subparsers) -> None:
     """Add the reports, show, review, serve, samples, demo and eval subcommands."""
     reports_parser = subparsers.add_parser("reports", help="list reports in the review queue")
     reports_parser.add_argument("--status", default="pending_review")
