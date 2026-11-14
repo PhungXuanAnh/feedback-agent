@@ -172,10 +172,6 @@ A fixed six-step pipeline; the LLM is used only where language understanding is 
 | 5 | Report + validator | LLM + code | LLM calls `submit_report`; code checks grounding, fills category/urgency/flags/confidence | one repair, then code-built template |
 | 6 | Review queue | no | saved as `pending_review`; an officer approves, overrides or rejects; only then a stub executor acts | storage error is returned, never "queued" |
 
-Each box names the file behind it (folders in [1.6.3](#163-project-layout)); red boxes are the failure paths.
-
-![Architecture: the pipeline, the bounded agent loop, failure paths and the file behind each box](images/architecture.svg)
-
 ## 1.4. Design decisions and safeguards
 
 Each subsection is the short version; the full details are in [`docs/DESIGN.md`](docs/DESIGN.md).

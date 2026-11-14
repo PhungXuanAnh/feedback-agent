@@ -67,7 +67,7 @@ class FeedbackPipeline:
         self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
-        """Run one feedback through the boxes of images/architecture.svg; return the saved report.
+        """Run one feedback through steps 1-5 and return the saved report.
 
         The report is saved as pending_review; StorageError propagates when saving fails.
         """
