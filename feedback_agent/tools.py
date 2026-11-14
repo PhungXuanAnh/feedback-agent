@@ -175,12 +175,12 @@ class FaultInjector:
 
     tool_failures: dict[str, int] = field(default_factory=dict)
 
-    def check(self, tool: str) -> None:
-        left = self.tool_failures.get(tool, 0)
-        if left != 0:
-            if left > 0:
-                self.tool_failures[tool] = left - 1
-            raise TransientToolError(f"injected failure in {tool}")
+    def fail_if_scheduled(self, tool_name: str) -> None:
+        failures_left = self.tool_failures.get(tool_name, 0)
+        if failures_left != 0:
+            if failures_left > 0:
+                self.tool_failures[tool_name] = failures_left - 1
+            raise TransientToolError(f"injected failure in {tool_name}")
 
 
 @dataclass
@@ -190,7 +190,7 @@ class ToolContext:
     metadata_email: str
     metadata_customer_id: Optional[str]
     as_of: date
-    faults: FaultInjector = field(default_factory=FaultInjector)
+    fault_injector: FaultInjector = field(default_factory=FaultInjector)
 
 
 def _months_between(start: date, end: date) -> int:
@@ -280,7 +280,7 @@ def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> 
         error_message = "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())[:300]
         return ToolResult(name, source, ToolStatus.error, error="invalid_arguments", message=error_message)
     try:
-        tool_context.faults.check(name)
+        tool_context.fault_injector.fail_if_scheduled(name)
         return _BODIES[name](tool_context, args)
     except TransientToolError as e:
         return ToolResult(name, source, ToolStatus.error, error="source_unavailable", message=str(e), retryable=True)

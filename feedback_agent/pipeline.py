@@ -24,9 +24,9 @@ PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}
 
 class FeedbackPipeline:
     def __init__(self, settings: Settings, store: Store, knowledge_base: KnowledgeBase, provider: LLMProvider,
-                 faults: Optional[FaultInjector] = None):
+                 fault_injector: Optional[FaultInjector] = None):
         self.settings, self.store, self.knowledge_base, self.provider = settings, store, knowledge_base, provider
-        self.faults = faults or FaultInjector()
+        self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
         settings, tracer = self.settings, Tracer(new_trace_id(), self.settings)
@@ -44,10 +44,10 @@ class FeedbackPipeline:
             flags.add("injection_suspected")
             tracer.emit(Event.injection_guard, source="feedback", patterns=injection_patterns)
 
-        caller = LLMCaller(self.provider, settings, tracer)
+        llm_caller = LLMCaller(self.provider, settings, tracer)
         llm_ok = True
         try:
-            classification = classify(caller, feedback)
+            classification = classify(llm_caller, feedback)
         except LLMUnavailable as e:
             llm_ok = False
             classification = keyword_classify(feedback.text)
@@ -55,7 +55,7 @@ class FeedbackPipeline:
         tracer.emit(Event.classification_completed, **classification.model_dump(mode="json"))
 
         tool_context = ToolContext(self.store, self.knowledge_base, feedback.customer_email, feedback.customer_id,
-                                   feedback.as_of, self.faults)
+                                   feedback.as_of, self.fault_injector)
         evidence = Evidence(as_of=feedback.as_of)
         triage_guideline = self.knowledge_base.guideline_by_id(SYSTEM_GUIDELINE)
         if triage_guideline:  # system evidence: citable for escalate/request_more_info only; not one of the 3 sources
@@ -63,12 +63,12 @@ class FeedbackPipeline:
             tracer.emit(Event.system_evidence, guideline_id=SYSTEM_GUIDELINE,
                         allowed_actions=triage_guideline["allowed_actions"])
         run_state = RunState(feedback, classification, tool_context, evidence, tracer, flags)
-        executor = ToolExecutor(run_state, settings.max_tool_calls, settings.max_forced_lookups)
+        tool_executor = ToolExecutor(run_state, settings.max_tool_calls, settings.max_forced_lookups)
 
         draft, failed, rejected, reason, turns = None, {}, None, "", 0
         generated_by = self.provider.name
         if llm_ok:
-            agent_result = AgentLoop(run_state, executor, caller, settings).run()
+            agent_result = AgentLoop(run_state, tool_executor, llm_caller, settings).loop()
             draft, turns, failed = agent_result.draft, agent_result.llm_turns, agent_result.failed_sources
             reason = {"llm_unavailable": "LLM unavailable after retry", "grounding_failed": "grounding check failed twice",
                       "budget_exhausted": "step cap reached without a valid report",
@@ -84,10 +84,10 @@ class FeedbackPipeline:
             flags.add("llm_unavailable")
         if draft is None:
             if not failed:  # incomplete_context already knows which source is down: no point asking again
-                failed = self._degraded_lookups(run_state, executor, tracer, reason)
+                failed = self._degraded_lookups(run_state, tool_executor, tracer, reason)
             generated_by = "degraded_template"
 
-        counters = {"llm_turns": turns, **executor.counters(), **tracer.totals()}
+        counters = {"llm_turns": turns, **tool_executor.counters(), **tracer.totals()}
         report = build_report(feedback=feedback, classification=classification, evidence=evidence, flags=flags,
                               draft=draft, generated_by=generated_by,
                               provider=self.provider.name, model=self.provider.model, trace_id=tracer.trace_id,
@@ -102,7 +102,7 @@ class FeedbackPipeline:
         return report
 
     @staticmethod
-    def _degraded_lookups(run_state: RunState, executor: ToolExecutor, tracer: Tracer, reason: str) -> dict:
+    def _degraded_lookups(run_state: RunState, tool_executor: ToolExecutor, tracer: Tracer, reason: str) -> dict:
         """No-LLM path: keep everything that already succeeded, call only the missing sources."""
         evidence = run_state.evidence
         plan = {"guidelines": ("get_cs_guidelines", {"category": run_state.classification.category.value}),
@@ -114,6 +114,6 @@ class FeedbackPipeline:
                     missing=missing)
         for source in missing:
             name, args = plan[source]
-            executor.call(name, args, origin="degraded")
-        return {source: executor.failed.get(source) or evidence.source_errors.get(source, "error")
+            tool_executor.call(name, args, origin="degraded")
+        return {source: tool_executor.failed_sources.get(source) or evidence.source_errors.get(source, "error")
                 for source in evidence.missing_sources}

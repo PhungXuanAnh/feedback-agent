@@ -18,12 +18,12 @@ class LLMCaller:
         self.provider, self.settings, self.tracer = provider, settings, tracer
 
     def call(self, purpose: str, prompt_version: str, messages: list[Message], tools: list[ToolSpec],
-             choice: ToolChoice, turn: Optional[int] = None) -> LLMTurn:
+             tool_choice: ToolChoice, turn: Optional[int] = None) -> LLMTurn:
         # A retry of the same request does not use up an agent turn (it has its own cap of 1).
         for attempt in (1, 2):
             started = time.monotonic()
             try:
-                llm_turn = self.provider.generate(messages, tools, choice, self.settings.max_output_tokens)
+                llm_turn = self.provider.generate(messages, tools, tool_choice, self.settings.max_output_tokens)
             except LLMError as e:
                 self.tracer.record_failed_attempt(
                     getattr(e, "usage", None), getattr(e, "usage_unknown", False), purpose=purpose, turn=turn,

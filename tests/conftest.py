@@ -89,9 +89,9 @@ def submit(actions=None, cited_pol=("POL-DUP-01",), cited_gl=("GL-BILL-01",), fo
 
 @pytest.fixture()
 def run(store, kb, tmp_path):
-    def _run(script, feedback=None, faults=None, **settings):
+    def _run(script, feedback=None, fault_injector=None, **settings):
         s = Settings(llm_provider="scripted", trace_dir=str(tmp_path / "traces"), llm_retry_backoff_s=0, **settings)
         prov = script if hasattr(script, "generate") else ScriptedProvider(script)
-        rep = FeedbackPipeline(s, store, kb, prov, faults).process(feedback or fb())
+        rep = FeedbackPipeline(s, store, kb, prov, fault_injector).process(feedback or fb())
         return rep, prov
     return _run

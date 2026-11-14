@@ -61,7 +61,7 @@ def run_one(sample: dict, mode: str, settings: Settings, root: Path = SAMPLES,
         run_settings.database_path, run_settings.trace_dir = f"{temp_dir}/s.db", f"{temp_dir}/traces"
         script = root / "scripts" / f"{name}.json" if mode == "scripted" else None
         pipeline = build_pipeline(run_settings, script=str(script) if script else None,
-                                  faults=_faults(faults.get("inject_tool_fault")))
+                                  fault_injector=_fault_injector(faults.get("inject_tool_fault")))
         if mode == "live" and faults.get("inject_llm_fault"):  # scripted scripts contain their own failures
             pipeline.provider = FaultInjectingProvider(pipeline.provider, faults["inject_llm_fault"])
         feedback = Feedback(**json.loads((root / "inputs" / f"{name}.json").read_text("utf-8")))
@@ -84,7 +84,7 @@ def run_one(sample: dict, mode: str, settings: Settings, root: Path = SAMPLES,
     return report, meta
 
 
-def _faults(specs: Optional[list[str]]) -> FaultInjector:
+def _fault_injector(specs: Optional[list[str]]) -> FaultInjector:
     injector = FaultInjector()
     for spec in specs or []:
         name, _, count = spec.partition(":")

@@ -43,7 +43,7 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
             script = Path(path).parent.parent / "scripts" / Path(path).name
         try:
             pipeline = build_pipeline(settings, script=str(script) if script else None,
-                                      faults=_fault_injector(args.inject_tool_fault))
+                                      fault_injector=_fault_injector(args.inject_tool_fault))
             if args.inject_llm_fault:
                 pipeline.provider = FaultInjectingProvider(pipeline.provider, args.inject_llm_fault)
             report = pipeline.process(Feedback(**json.loads(Path(path).read_text("utf-8"))))

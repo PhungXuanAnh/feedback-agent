@@ -86,8 +86,8 @@ def _snapshot(report: dict, overrides: Optional[Overrides] = None) -> dict:
 
 
 class ReviewService:
-    def __init__(self, store: Store, settings: Settings, executor: Optional[StubExecutor] = None):
-        self.store, self.settings, self.executor = store, settings, executor or StubExecutor()
+    def __init__(self, store: Store, settings: Settings, action_executor: Optional[StubExecutor] = None):
+        self.store, self.settings, self.action_executor = store, settings, action_executor or StubExecutor()
 
     def get(self, report_id: str) -> dict:
         row = self.store.get_report_row(report_id)
@@ -133,7 +133,8 @@ class ReviewService:
         execution = None
         if review_request.decision != "reject":
             final = after["suggested_actions"] if after else report["suggested_actions"]
-            execution = self.executor.execute(report_id, [SuggestedAction.model_validate(action) for action in final])
+            final_actions = [SuggestedAction.model_validate(action) for action in final]
+            execution = self.action_executor.execute(report_id, final_actions)
             self.store.mark_executed(report_id, datetime.now(timezone.utc).isoformat())
         status = self.store.get_report_row(report_id)["status"]
         Tracer(report["trace_id"], self.settings).emit(Event.human_review, report_id=report_id,

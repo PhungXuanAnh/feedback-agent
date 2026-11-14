@@ -67,11 +67,11 @@ def cmd_demo(args, settings: Settings) -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         settings.database_path, settings.trace_dir = f"{temp_dir}/demo.db", f"{temp_dir}/traces"
         from .bootstrap import build_pipeline
-        from .samples import _faults
+        from .samples import _fault_injector
         from .schemas import Feedback
         settings.llm_provider, settings.llm_retry_backoff_s = "scripted", 0.1
         pipeline = build_pipeline(settings, script=str(SAMPLES / "scripts" / f"{sample['name']}.json"),
-                                  faults=_faults((sample.get("faults") or {}).get("inject_tool_fault")))
+                                  fault_injector=_fault_injector((sample.get("faults") or {}).get("inject_tool_fault")))
         feedback = Feedback(**json.loads((SAMPLES / "inputs" / f"{sample['name']}.json").read_text("utf-8")))
         print(f"=== INPUT ({sample['title']})\n{feedback.text}\n")
         report = pipeline.process(feedback)

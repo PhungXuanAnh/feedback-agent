@@ -51,35 +51,37 @@ class RunState:
 class ToolExecutor:
     """Runs tool calls with caching, budgets, one retry for transient errors and tracing."""
 
-    def __init__(self, run_state: RunState, max_tool_calls: int, max_forced: int):
-        self.run_state, self.max_tool_calls, self.max_forced = run_state, max_tool_calls, max_forced
-        self.used = self.forced = self.cache_hits = self.degraded = 0
-        self.failed: dict[str, str] = {}  # source -> error, after the single retry also failed
+    def __init__(self, run_state: RunState, max_tool_calls: int, max_forced_lookups: int):
+        self.run_state = run_state
+        self.max_tool_calls, self.max_forced_lookups = max_tool_calls, max_forced_lookups
+        self.llm_tool_calls = self.forced_calls = self.cache_hits = self.degraded_calls = 0
+        self.failed_sources: dict[str, str] = {}  # source -> error, after the single retry also failed
         self._cache: dict[str, ToolResult] = {}
 
     @staticmethod
-    def _key(name: str, args: dict) -> str:
+    def _cache_key(name: str, args: dict) -> str:
         normalized_args = {k: (v.strip().lower() if isinstance(v, str) else v) for k, v in (args or {}).items()}
         return name + json.dumps(normalized_args, sort_keys=True, default=str)
 
     def call(self, name: str, args: dict[str, Any], origin: str = "llm") -> ToolResult:
-        tracer, key = self.run_state.tracer, self._key(name, args)
-        if key in self._cache:  # same call twice in a run: no new work, no budget
+        tracer, cache_key = self.run_state.tracer, self._cache_key(name, args)
+        if cache_key in self._cache:  # same call twice in a run: no new work, no budget
             self.cache_hits += 1
             tracer.emit(Event.tool_call, tool=name, args=args, origin=origin, cache_hit=True)
-            return self._cache[key]
-        if origin == "llm" and self.used >= self.max_tool_calls:
+            return self._cache[cache_key]
+        if origin == "llm" and self.llm_tool_calls >= self.max_tool_calls:
             tracer.emit(Event.tool_error, tool=name, args=args, origin=origin, error="tool_budget_exhausted")
             return ToolResult(name, SOURCES.get(name, "unknown"), ToolStatus.error, error="tool_budget_exhausted",
                               message=f"tool call budget ({self.max_tool_calls}) used up; call submit_report")
-        if origin == "forced_by_system" and self.forced >= self.max_forced:  # pragma: no cover - 3 sources
+        # unreachable today: there are only 3 sources to force
+        if origin == "forced_by_system" and self.forced_calls >= self.max_forced_lookups:  # pragma: no cover
             return ToolResult(name, SOURCES.get(name, "unknown"), ToolStatus.error, error="forced_budget_exhausted")
         if origin == "llm":
-            self.used += 1
+            self.llm_tool_calls += 1
         elif origin == "forced_by_system":
-            self.forced += 1
+            self.forced_calls += 1
         else:
-            self.degraded += 1
+            self.degraded_calls += 1
         for attempt in (1, 2):
             tracer.emit(Event.tool_call, tool=name, args=args, origin=origin, attempt=attempt, cache_hit=False)
             tool_result = run_tool(self.run_state.tool_context, name, args)
@@ -93,27 +95,27 @@ class ToolExecutor:
                 tracer.emit(Event.tool_result, tool=name, status=tool_result.status.value, data=tool_result.data,
                             message=tool_result.message)
             break
-        self._finish(tool_result, name, key)
+        self._finish(tool_result, name, cache_key)
         return tool_result
 
-    def _finish(self, tool_result: ToolResult, name: str, key: str) -> None:
+    def _finish(self, tool_result: ToolResult, name: str, cache_key: str) -> None:
         self.run_state.evidence.record(tool_result)
         self.run_state.flags.update(tool_result.flags)
         if tool_result.status is ToolStatus.error:
             if tool_result.error in _PERSISTENT:
-                self.failed[tool_result.source] = tool_result.error
+                self.failed_sources[tool_result.source] = tool_result.error
         else:
-            self.failed.pop(tool_result.source, None)
+            self.failed_sources.pop(tool_result.source, None)
             hits = guard.scan(json.dumps(tool_result.data, default=str)) if tool_result.data else []
             if hits:
                 self.run_state.flags.add("injection_in_tool_result")
                 self.run_state.tracer.emit(Event.injection_guard, source=f"tool:{name}", patterns=hits)
         if tool_result.status is not ToolStatus.error or tool_result.error in ("out_of_scope", "invalid_arguments"):
-            self._cache[key] = tool_result  # transient/source errors are not cached, so a later call can succeed
+            self._cache[cache_key] = tool_result  # transient/source errors are not cached, so a later call can succeed
 
     def counters(self) -> dict[str, int]:
-        return {"tool_calls": self.used, "forced_by_system": self.forced, "cache_hits": self.cache_hits,
-                "degraded_calls": self.degraded}
+        return {"tool_calls": self.llm_tool_calls, "forced_by_system": self.forced_calls,
+                "cache_hits": self.cache_hits, "degraded_calls": self.degraded_calls}
 
 
 @dataclass
@@ -126,8 +128,9 @@ class AgentResult:
 
 
 class AgentLoop:
-    def __init__(self, run_state: RunState, executor: ToolExecutor, caller: LLMCaller, settings: Settings):
-        self.run_state, self.executor, self.caller, self.settings = run_state, executor, caller, settings
+    def __init__(self, run_state: RunState, tool_executor: ToolExecutor, llm_caller: LLMCaller, settings: Settings):
+        self.run_state, self.settings = run_state, settings
+        self.tool_executor, self.llm_caller = tool_executor, llm_caller
 
     # -------------------------------------------------------------- prompts
     def _opening(self) -> str:
@@ -165,33 +168,33 @@ class AgentLoop:
         run_state.flags.add("step_limit_reached")  # the cap forced the system to do the retrieval itself
         for source in list(evidence.missing_sources):
             name, args = plan[source]
-            tool_result = self.executor.call(name, args, origin="forced_by_system")
+            tool_result = self.tool_executor.call(name, args, origin="forced_by_system")
             blocks.append(guard.wrap_tool_result(name, tool_result.to_dict(), "forced_by_system"))
         note = ("The system ran the lookups you had not done yet, because the last turn is reserved for "
                 "submit_report. Their results:\n" + "\n".join(blocks) + "\nNow call submit_report.")
         last = messages[-1]
         last.text = (last.text + "\n\n" if last.text else "") + note
 
-    # ----------------------------------------------------------------- loop
-    def run(self) -> AgentResult:
+    def loop(self) -> AgentResult:
         run_state, evidence, settings = self.run_state, self.run_state.evidence, self.settings
         messages = [Message("system", load_prompt(AGENT_PROMPT)), Message("user", self._opening())]
         fix_used, turns = False, 0
         for turn in range(1, settings.max_llm_turns + 1):
-            final = turn == settings.max_llm_turns
-            if self.executor.failed:  # a source stayed broken after its retry: stop, report incomplete_context
-                return AgentResult("incomplete_context", llm_turns=turns, failed_sources=dict(self.executor.failed))
-            if final:
+            final_turn = turn == settings.max_llm_turns
+            if self.tool_executor.failed_sources:  # a source stayed broken after its retry: report incomplete_context
+                return AgentResult("incomplete_context", llm_turns=turns,
+                                   failed_sources=dict(self.tool_executor.failed_sources))
+            if final_turn:
                 if evidence.missing_sources:
                     self._forced_lookups(messages)
                     if evidence.missing_sources:
-                        return AgentResult("incomplete_context", llm_turns=turns,
-                                           failed_sources=dict(self.executor.failed) or dict(evidence.source_errors))
-                tools, choice = [SUBMIT_TOOL], ToolChoice("required", ["submit_report"])
+                        failed_sources = dict(self.tool_executor.failed_sources) or dict(evidence.source_errors)
+                        return AgentResult("incomplete_context", llm_turns=turns, failed_sources=failed_sources)
+                tools, tool_choice = [SUBMIT_TOOL], ToolChoice("required", ["submit_report"])
             else:
-                tools, choice = tool_specs(SUBMIT_TOOL), ToolChoice("auto")
+                tools, tool_choice = tool_specs(SUBMIT_TOOL), ToolChoice("auto")
             try:
-                llm_turn = self.caller.call("agent_turn", AGENT_PROMPT, messages, tools, choice, turn)
+                llm_turn = self.llm_caller.call("agent_turn", AGENT_PROMPT, messages, tools, tool_choice, turn)
             except LLMUnavailable:
                 return AgentResult("llm_unavailable", llm_turns=turns)
             if any(not isinstance(call.args, dict) for call in llm_turn.tool_calls):  # provider returned an unusable call
@@ -204,38 +207,39 @@ class AgentLoop:
                 messages.append(Message("user", "Use the tools to consult guidelines, customer and policies, "
                                                 "then call submit_report."))
                 continue
-            responses, draft, verdict = self._answer(llm_turn.tool_calls, final, fix_used)
+            responses, draft, verdict = self._answer(llm_turn.tool_calls, final_turn, fix_used)
             messages.append(Message("tool", tool_responses=responses))
             if verdict == "fix":
                 fix_used = True
             if draft is not None:
                 return AgentResult("submitted", draft=draft, llm_turns=turns)
             if verdict == "grounding_failed":
-                return AgentResult("grounding_failed", rejected_draft=self._rejected, llm_turns=turns)
+                return AgentResult("grounding_failed", rejected_draft=self._rejected_draft, llm_turns=turns)
         return AgentResult("budget_exhausted", llm_turns=turns)
 
-    _rejected: Optional[dict] = None
+    _rejected_draft: Optional[dict] = None
 
-    def _answer(self, calls: list[ToolCall], final: bool, fix_used: bool):
-        by_id: dict[str, dict] = {}
-        retrieval = [call for call in calls if call.name != "submit_report"]
-        submits = [call for call in calls if call.name == "submit_report"]
-        for call in retrieval:
-            by_id[call.id] = self._payload(self.executor.call(call.name, call.args))
+    def _answer(self, calls: list[ToolCall], final_turn: bool, fix_used: bool):
+        response_by_call_id: dict[str, dict] = {}
+        retrieval_calls = [call for call in calls if call.name != "submit_report"]
+        submit_calls = [call for call in calls if call.name == "submit_report"]
+        for call in retrieval_calls:
+            response_by_call_id[call.id] = self._payload(self.tool_executor.call(call.name, call.args))
         draft, verdict = None, None
-        for i, call in enumerate(submits):
-            if retrieval:
-                by_id[call.id] = {"status": "error", "error": "submit_too_early",
-                                  "message": "submit_report was called in the same turn as retrieval tools; "
-                                          "call it again after reading their results."}
+        for i, call in enumerate(submit_calls):
+            if retrieval_calls:
+                response_by_call_id[call.id] = {
+                    "status": "error", "error": "submit_too_early",
+                    "message": "submit_report was called in the same turn as retrieval tools; "
+                               "call it again after reading their results."}
             elif i > 0:
-                by_id[call.id] = {"status": "error", "error": "duplicate_submit",
-                                  "message": "only one submit_report per turn."}
+                response_by_call_id[call.id] = {"status": "error", "error": "duplicate_submit",
+                                                "message": "only one submit_report per turn."}
             else:
-                by_id[call.id], draft, verdict = self._handle_submit(call, final, fix_used)
-        return [ToolResponse(call.id, call.name, by_id[call.id]) for call in calls], draft, verdict
+                response_by_call_id[call.id], draft, verdict = self._handle_submit(call, final_turn, fix_used)
+        return [ToolResponse(call.id, call.name, response_by_call_id[call.id]) for call in calls], draft, verdict
 
-    def _handle_submit(self, call: ToolCall, final: bool, fix_used: bool):
+    def _handle_submit(self, call: ToolCall, final_turn: bool, fix_used: bool):
         evidence, tracer = self.run_state.evidence, self.run_state.tracer
         if evidence.missing_sources:  # evidence gate: not_found counts as consulted, error does not
             tracer.emit(Event.grounding_validation, ok=False, gate="missing_sources", missing=evidence.missing_sources)
@@ -248,13 +252,13 @@ class AgentLoop:
         except ValidationError as e:
             draft, issues = None, [f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors()][:8]
         attempt = 2 if fix_used else 1
-        no_repair_left = bool(issues) and (fix_used or final)
+        no_repair_left = bool(issues) and (fix_used or final_turn)
         tracer.emit(Event.grounding_validation, ok=not issues, attempt=attempt, issues=issues,
                     **({"final": True, "rejected_draft": call.args} if no_repair_left else {}))
         if not issues:
             return {"status": "accepted"}, draft, None
         if no_repair_left:  # caller rebuilds the report from validated data; the bad draft stays in the trace
-            self._rejected = call.args
+            self._rejected_draft = call.args
             return {"status": "error", "error": "validation_failed", "issues": issues}, None, "grounding_failed"
         return ({"status": "error", "error": "validation_failed", "issues": issues,
                  "message": "Fix exactly these problems and call submit_report again."}, None, "fix")

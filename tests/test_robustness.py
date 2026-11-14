@@ -55,10 +55,10 @@ def test_llm_failures_retry_then_degrade_and_keep_good_results(run, tmp_path):
 
 def test_tool_errors_retry_once_then_incomplete_context_never_not_found(run):
     # transient source error: retried once automatically, the run is normal
-    rep, _ = run([classify_step(), calls(G, C, P), submit()], faults=FaultInjector({"search_policies": 1}))
+    rep, _ = run([classify_step(), calls(G, C, P), submit()], fault_injector=FaultInjector({"search_policies": 1}))
     assert rep.report_generated_by == "scripted" and "incomplete_context:policies" not in rep.flags
     # source stays broken: error != not_found, so the evidence gate is NOT satisfied -> incomplete_context
-    rep, prov = run([classify_step(), calls(G, C, P)], faults=FaultInjector({"search_policies": -1}))
+    rep, prov = run([classify_step(), calls(G, C, P)], fault_injector=FaultInjector({"search_policies": -1}))
     assert rep.report_generated_by == "degraded_template" and prov.calls == 2  # finite: no further LLM turns
     assert "incomplete_context:policies" in rep.flags and "no_applicable_policy" not in rep.flags
     assert [a.type.value for a in rep.suggested_actions] == ["escalate_to_human"]

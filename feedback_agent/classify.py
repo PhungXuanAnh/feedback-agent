@@ -80,12 +80,12 @@ def keyword_classify(text: str) -> Classification:
     return apply_floor(classification, text)
 
 
-def classify(caller: LLMCaller, feedback: Feedback) -> Classification:
+def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
     """Raises LLMUnavailable when the provider fails or returns an unusable answer."""
     messages = [Message("system", load_prompt(CLASSIFY_PROMPT)),
                 Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}")]
-    llm_turn = caller.call("classify", CLASSIFY_PROMPT, messages, [CLASSIFY_TOOL],
-                           ToolChoice("required", ["classify_feedback"]))
+    llm_turn = llm_caller.call("classify", CLASSIFY_PROMPT, messages, [CLASSIFY_TOOL],
+                               ToolChoice("required", ["classify_feedback"]))
     call = next((tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"), None)
     if call is None:
         raise LLMUnavailable("classify_feedback was not called")

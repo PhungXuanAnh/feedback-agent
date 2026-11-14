@@ -33,7 +33,7 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
     first = svc.review(rid, req("approve"))
     assert first["status"] == "executed" and first["execution"][0].startswith("POST /billing/refunds")
     again = svc.review(rid, req("approve"))
-    assert again["idempotent"] is True and len(svc.executor.calls) == 1
+    assert again["idempotent"] is True and len(svc.action_executor.calls) == 1
     with pytest.raises(ReviewConflict):
         svc.review(rid, req("reject"))                   # conflicting decision -> 409
     assert len(store.reviews_for(rid)) == 1              # audit untouched, decision kept after executed
@@ -43,7 +43,7 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
     assert svc.review(rid2, req("reject", note="not a duplicate"))["status"] == "rejected"
     with pytest.raises(ReviewConflict):
         svc.review(rid2, req("approve"))
-    assert len(svc.executor.calls) == 1
+    assert len(svc.action_executor.calls) == 1
 
     # override: validated by the same grounding rules, machine suggestion preserved with before/after
     rid3 = new_report(run)
@@ -56,7 +56,7 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
         SuggestedAction(type="escalate_to_human", basis=["GL-BILL-01"], params={"target": "billing_lead"})])
     out = svc.review(rid3, req("override", overrides=good))
     detail = svc.get(rid3)
-    assert out["status"] == "executed" and svc.executor.calls[-1].startswith("POST /escalations/human")
+    assert out["status"] == "executed" and svc.action_executor.calls[-1].startswith("POST /escalations/human")
     audit = detail["reviews"][0]
     assert audit["overrides"]["before"]["suggested_actions"][0]["type"] == "issue_refund"
     assert audit["overrides"]["after"]["urgency"] == "high" and audit["machine_urgency"] == "medium"
