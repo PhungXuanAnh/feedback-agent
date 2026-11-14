@@ -4,6 +4,7 @@ Only classify, the agent loop and submit_report use the LLM; everything else is 
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Optional
 
 from ..config import Settings
@@ -11,7 +12,7 @@ from ..database import Database
 from ..llm.base import LLMProvider
 from ..llm.caller import LLMCaller, LLMUnavailable
 from ..ops.trace import Event, Tracer, new_trace_id
-from ..schemas import Feedback, Report
+from ..schemas import Classification, Feedback, Report, ReportDraft
 from . import guard
 from .agent import AgentLoop, policy_query
 from .classify import classify, classify_by_keywords
@@ -22,6 +23,28 @@ from .tool_executor import RunState, ToolExecutor
 from .tools import FaultInjector, KnowledgeBase, ToolContext
 
 PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}
+_TEMPLATE_REASONS = {
+    "llm_unavailable": "LLM unavailable after retry",
+    "grounding_failed": "grounding check failed twice",
+    "budget_exhausted": "step cap reached without a valid report",
+    "incomplete_context": "a required source was unavailable",
+}
+_OUTCOME_FLAGS = {
+    "grounding_failed": "grounding_failed",
+    "budget_exhausted": "step_limit_reached",
+    "llm_unavailable": "llm_unavailable",
+}
+
+
+@dataclass
+class DraftOutcome:
+    """What steps 4-5 produced: the LLM's draft, or None and why the template report is used."""
+
+    draft: Optional[ReportDraft]
+    generated_by: str
+    template_reason: str
+    failed_sources: dict[str, str]
+    llm_turns: int
 
 
 class FeedbackPipeline:
@@ -44,13 +67,26 @@ class FeedbackPipeline:
         self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
-        """Run one feedback end to end and return the saved report (status pending_review).
+        """Run one feedback through the boxes of images/architecture.svg; return the saved report.
 
-        intake + injection scan -> classify (keyword rules if the LLM fails) -> agent loop ->
-        degraded lookups when there is no draft -> build_report -> save. Raises StorageError when
-        saving fails.
+        The report is saved as pending_review; StorageError propagates when saving fails.
         """
-        settings, tracer = self.settings, Tracer(new_trace_id(), self.settings)
+        tracer = self._start_trace(feedback)
+        flags = self._scan_for_injection(feedback, tracer)
+        llm_caller = LLMCaller(self.provider, self.settings, tracer)
+        classification, llm_ok = self._classify(llm_caller, feedback, tracer)
+        run_state = self._new_run_state(feedback, classification, flags, tracer)
+        tool_executor = ToolExecutor(
+            run_state, self.settings.max_tool_calls, self.settings.max_forced_lookups
+        )
+        outcome = self._draft_report(run_state, tool_executor, llm_caller, llm_ok)
+        report = self._build_report(run_state, tool_executor, outcome)
+        self._save(run_state, report)
+        return report
+
+    def _start_trace(self, feedback: Feedback) -> Tracer:
+        """Step 1, intake: give the feedback an id and open its trace."""
+        tracer = Tracer(new_trace_id(), self.settings)
         feedback.feedback_id = feedback.feedback_id or "fb_" + uuid.uuid4().hex[:10]
         tracer.emit(
             Event.intake,
@@ -61,28 +97,43 @@ class FeedbackPipeline:
             received_at=feedback.received_at.isoformat(),
             provider=self.provider.name,
             model=self.provider.model,
-            max_llm_turns=settings.max_llm_turns,
-            max_tool_calls=settings.max_tool_calls,
+            max_llm_turns=self.settings.max_llm_turns,
+            max_tool_calls=self.settings.max_tool_calls,
             prompt_versions=PROMPT_VERSIONS,
         )
+        return tracer
+
+    @staticmethod
+    def _scan_for_injection(feedback: Feedback, tracer: Tracer) -> set[str]:
+        """Step 2, injection guard: flag (never block) known injection patterns."""
         flags: set[str] = set()
         injection_patterns = guard.find_injection_patterns(feedback.text)
         if injection_patterns:
             flags.add("injection_suspected")
             tracer.emit(Event.injection_guard, source="feedback", patterns=injection_patterns)
+        return flags
 
-        llm_caller = LLMCaller(self.provider, settings, tracer)
-        llm_ok = True
+    @staticmethod
+    def _classify(
+        llm_caller: LLMCaller, feedback: Feedback, tracer: Tracer
+    ) -> tuple[Classification, bool]:
+        """Step 3, classify; falls back to keyword rules. Returns (classification, llm_ok)."""
         try:
             classification = classify(llm_caller, feedback)
+            llm_ok = True
         except LLMUnavailable as e:
-            llm_ok = False
             classification = classify_by_keywords(feedback.text)
+            llm_ok = False
             tracer.emit(
                 Event.degraded_path, step="classify", reason=str(e)[:200], fallback="keyword_rules"
             )
         tracer.emit(Event.classification_completed, **classification.model_dump(mode="json"))
+        return classification, llm_ok
 
+    def _new_run_state(
+        self, feedback: Feedback, classification: Classification, flags: set[str], tracer: Tracer
+    ) -> RunState:
+        """What the agent loop and the degraded path share: tool context, evidence, flags."""
         tool_context = ToolContext(
             self.database,
             self.knowledge_base,
@@ -102,79 +153,83 @@ class FeedbackPipeline:
                 guideline_id=SYSTEM_GUIDELINE,
                 allowed_actions=triage_guideline["allowed_actions"],
             )
-        run_state = RunState(feedback, classification, tool_context, evidence, tracer, flags)
-        tool_executor = ToolExecutor(
-            run_state, settings.max_tool_calls, settings.max_forced_lookups
-        )
+        return RunState(feedback, classification, tool_context, evidence, tracer, flags)
 
-        draft, failed, rejected, reason, turns = None, {}, None, "", 0
-        generated_by = self.provider.name
+    def _draft_report(
+        self,
+        run_state: RunState,
+        tool_executor: ToolExecutor,
+        llm_caller: LLMCaller,
+        llm_ok: bool,
+    ) -> DraftOutcome:
+        """Steps 4-5: the agent loop drafts the report; without a draft, the degraded path runs."""
         if llm_ok:
-            agent_result = AgentLoop(run_state, tool_executor, llm_caller, settings).run()
-            draft, turns, failed = (
-                agent_result.draft,
-                agent_result.llm_turns,
-                agent_result.failed_sources,
-            )
-            reason = {
-                "llm_unavailable": "LLM unavailable after retry",
-                "grounding_failed": "grounding check failed twice",
-                "budget_exhausted": "step cap reached without a valid report",
-                "incomplete_context": "a required source was unavailable",
-            }.get(agent_result.outcome, "")
-            if agent_result.outcome == "grounding_failed":
-                flags.add("grounding_failed")
-            if agent_result.outcome == "budget_exhausted":
-                flags.add("step_limit_reached")
-            if agent_result.outcome == "llm_unavailable" and "llm_unavailable" not in flags:
-                flags.add("llm_unavailable")
+            agent_result = AgentLoop(run_state, tool_executor, llm_caller, self.settings).run()
+            draft, llm_turns = agent_result.draft, agent_result.llm_turns
+            failed_sources = agent_result.failed_sources
+            template_reason = _TEMPLATE_REASONS.get(agent_result.outcome, "")
+            if agent_result.outcome in _OUTCOME_FLAGS:
+                run_state.flags.add(_OUTCOME_FLAGS[agent_result.outcome])
         else:
-            reason = "LLM unavailable after retry"
-            flags.add("llm_unavailable")
-        if draft is None:
-            if (
-                not failed
-            ):  # incomplete_context already knows which source is down: no point asking again
-                failed = self._run_degraded_lookups(run_state, tool_executor, tracer, reason)
-            generated_by = "degraded_template"
+            draft, llm_turns, failed_sources = None, 0, {}
+            template_reason = _TEMPLATE_REASONS["llm_unavailable"]
+            run_state.flags.add("llm_unavailable")
+        if draft is not None:
+            return DraftOutcome(
+                draft, self.provider.name, template_reason, failed_sources, llm_turns
+            )
+        # incomplete_context already knows which source is down: no point asking again
+        if not failed_sources:
+            failed_sources = self._run_degraded_lookups(
+                run_state, tool_executor, run_state.tracer, template_reason
+            )
+        return DraftOutcome(None, "degraded_template", template_reason, failed_sources, llm_turns)
 
-        counters = {"llm_turns": turns, **tool_executor.counters(), **tracer.totals()}
+    def _build_report(
+        self, run_state: RunState, tool_executor: ToolExecutor, outcome: DraftOutcome
+    ) -> Report:
+        """Report: code fills classification, flags and confidence around the draft or template."""
+        tracer = run_state.tracer
+        counters = {"llm_turns": outcome.llm_turns, **tool_executor.counters(), **tracer.totals()}
         report = build_report(
-            feedback=feedback,
-            classification=classification,
-            evidence=evidence,
-            flags=flags,
-            draft=draft,
-            generated_by=generated_by,
+            feedback=run_state.feedback,
+            classification=run_state.classification,
+            evidence=run_state.evidence,
+            flags=run_state.flags,
+            draft=outcome.draft,
+            generated_by=outcome.generated_by,
             provider=self.provider.name,
             model=self.provider.model,
             trace_id=tracer.trace_id,
             prompt_versions=PROMPT_VERSIONS,
             counters=counters,
-            template_reason=reason,
-            failed_sources=failed,
+            template_reason=outcome.template_reason,
+            failed_sources=outcome.failed_sources,
         )
         tracer.emit(
             Event.report_generated,
             report_id=report.report_id,
-            generated_by=generated_by,
+            generated_by=outcome.generated_by,
             confidence=report.confidence_level,
             score=report.confidence_score,
             flags=report.flags,
             actions=[action.type.value for action in report.suggested_actions],
             counters=counters,
         )
+        return report
+
+    def _save(self, run_state: RunState, report: Report) -> None:
+        """Save the feedback and the report (status pending_review) for human review."""
         self.database.save_feedback(
-            feedback,
-            "injection_suspected" in flags,
-            classification,
+            run_state.feedback,
+            "injection_suspected" in run_state.flags,
+            run_state.classification,
             CLASSIFY_PROMPT,
-            tracer.trace_id,
+            run_state.tracer.trace_id,
         )
         self.database.save_report(
-            report, evidence.to_dict()
+            report, run_state.evidence.to_dict()
         )  # StorageError propagates: never claim "queued"
-        return report
 
     @staticmethod
     def _run_degraded_lookups(
