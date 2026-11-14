@@ -85,7 +85,7 @@ def classify(caller: LLMCaller, feedback: Feedback) -> Classification:
     messages = [Message("system", load_prompt(CLASSIFY_PROMPT)),
                 Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}")]
     llm_turn = caller.call("classify", CLASSIFY_PROMPT, messages, [CLASSIFY_TOOL],
-                           ToolChoice("any", ["classify_feedback"]))
+                           ToolChoice("required", ["classify_feedback"]))
     call = next((tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"), None)
     if call is None:
         raise LLMUnavailable("classify_feedback was not called")

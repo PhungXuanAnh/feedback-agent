@@ -14,6 +14,7 @@ from .base import LLMError, LLMTurn, Message, ToolCall, ToolChoice, ToolSpec
 
 _ALLOWED_FORMATS = {"date", "date-time", "enum"}
 _DROP = {"$defs", "$ref", "title", "default", "additionalProperties", "examples"}
+_GEMINI_MODES = {"auto": "AUTO", "required": "ANY", "none": "NONE"}  # functionCallingConfig.mode
 
 
 def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dict[str, Any]:
@@ -109,8 +110,8 @@ class GeminiProvider:
             body["tools"] = [{"functionDeclarations": [
                 {"name": tool.name, "description": tool.description, "parameters": to_gemini_schema(tool.parameters)}
                 for tool in tools]}]
-            calling_config: dict[str, Any] = {"mode": tool_choice.mode.upper()}
-            if tool_choice.mode == "any" and tool_choice.allowed:
+            calling_config: dict[str, Any] = {"mode": _GEMINI_MODES[tool_choice.mode]}
+            if tool_choice.mode == "required" and tool_choice.allowed:
                 calling_config["allowedFunctionNames"] = tool_choice.allowed
             body["toolConfig"] = {"functionCallingConfig": calling_config}
         return body

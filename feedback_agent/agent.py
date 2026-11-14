@@ -187,7 +187,7 @@ class AgentLoop:
                     if evidence.missing_sources:
                         return AgentResult("incomplete_context", llm_turns=turns,
                                            failed_sources=dict(self.executor.failed) or dict(evidence.source_errors))
-                tools, choice = [SUBMIT_TOOL], ToolChoice("any", ["submit_report"])
+                tools, choice = [SUBMIT_TOOL], ToolChoice("required", ["submit_report"])
             else:
                 tools, choice = tool_specs(SUBMIT_TOOL), ToolChoice("auto")
             try:

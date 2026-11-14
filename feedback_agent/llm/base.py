@@ -28,8 +28,8 @@ class ToolSpec:
 
 @dataclass
 class ToolChoice:
-    mode: Literal["auto", "any", "none"] = "auto"
-    allowed: Optional[list[str]] = None  # with mode="any": only these tools may be called
+    mode: Literal["auto", "required", "none"] = "auto"  # required = the model must call a tool
+    allowed: Optional[list[str]] = None  # with mode="required": only these tools may be called
 
 
 @dataclass

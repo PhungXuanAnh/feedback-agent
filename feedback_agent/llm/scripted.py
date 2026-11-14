@@ -73,10 +73,10 @@ class ScriptedProvider:
         for call in step.tool_calls:
             if call.name not in names:
                 raise ScriptError(f"scripted call to tool {call.name!r} that was not offered")
-            if tool_choice.mode == "any" and tool_choice.allowed and call.name not in tool_choice.allowed:
+            if tool_choice.mode == "required" and tool_choice.allowed and call.name not in tool_choice.allowed:
                 raise ScriptError(f"scripted call {call.name!r} violates tool_choice {tool_choice.allowed}")
-        if tool_choice.mode == "any" and not step.tool_calls:
-            raise ScriptError("tool_choice=any requires a tool call")
+        if tool_choice.mode == "required" and not step.tool_calls:
+            raise ScriptError("tool_choice=required requires a tool call")
         return step
 
 

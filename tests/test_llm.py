@@ -41,7 +41,7 @@ def test_gemini_http_roundtrip_replays_raw_and_answers_every_call():
 
     p = GeminiProvider("secret-key", "m", client=httpx.Client(transport=httpx.MockTransport(handler)))
     msgs = [Message("system", "sys"), Message("user", "hi")]
-    turn = p.generate(msgs, tool_specs(), ToolChoice("any", ["lookup_customer"]), 256)
+    turn = p.generate(msgs, tool_specs(), ToolChoice("required", ["lookup_customer"]), 256)
     assert [c.id for c in turn.tool_calls] == ["fc1", "fc2"] and turn.usage["output_tokens"] == 70
     req, body = sent[0]
     assert req.headers["x-goog-api-key"] == "secret-key" and "secret-key" not in str(req.url)
