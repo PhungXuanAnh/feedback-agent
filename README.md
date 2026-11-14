@@ -172,6 +172,10 @@ A fixed six-step pipeline; the LLM is used only where language understanding is 
 | 5 | Report + validator | LLM + code | LLM calls `submit_report`; code checks grounding, fills category/urgency/flags/confidence | one repair, then code-built template |
 | 6 | Review queue | no | saved as `pending_review`; an officer approves, overrides or rejects; only then a stub executor acts | storage error is returned, never "queued" |
 
+Each box names the file behind it (folders in [1.6.3](#163-project-layout)); red boxes are the failure paths.
+
+![Architecture: the pipeline, the bounded agent loop, failure paths and the file behind each box](images/architecture.svg)
+
 ## 1.4. Design decisions and safeguards
 
 Each subsection is the short version; the full details are in [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -264,7 +268,7 @@ Every variable (LLM provider and model, step caps, token limit, prices, storage 
 
 | Folder | Role and files |
 |---|---|
-| [`core/`](feedback_agent/core/) main flow | [`pipeline.py`](feedback_agent/core/pipeline.py) (the six steps in order), [`agent.py`](feedback_agent/core/agent.py) (tool loop, executor, caps), [`classify.py`](feedback_agent/core/classify.py), [`tools.py`](feedback_agent/core/tools.py) (the three retrieval tools), [`hitl.py`](feedback_agent/core/hitl.py) (review state machine) |
+| [`core/`](feedback_agent/core/) main flow | [`pipeline.py`](feedback_agent/core/pipeline.py) (the six steps in order; the orchestrator), [`agent.py`](feedback_agent/core/agent.py) (tool loop, caps, forced lookups), [`tool_executor.py`](feedback_agent/core/tool_executor.py) (cache, budget and retry for every tool call, also on the degraded path), [`classify.py`](feedback_agent/core/classify.py), [`tools.py`](feedback_agent/core/tools.py) (the three retrieval tools), [`hitl.py`](feedback_agent/core/hitl.py) (review state machine) |
 | [`core/`](feedback_agent/core/) checks and safety | [`validator.py`](feedback_agent/core/validator.py) (grounding), [`report.py`](feedback_agent/core/report.py), [`evidence.py`](feedback_agent/core/evidence.py) (what the tools returned), [`guard.py`](feedback_agent/core/guard.py) (injection flags, delimiters), [`prompts/`](feedback_agent/core/prompts/) loaded by [`prompts.py`](feedback_agent/core/prompts.py) (versioned; the version goes into traces and reports) |
 | [`interfaces/`](feedback_agent/interfaces/) entry points | [`api.py`](feedback_agent/interfaces/api.py), [`apiguard.py`](feedback_agent/interfaces/apiguard.py) (token, rate and daily limits), [`cli.py`](feedback_agent/interfaces/cli.py) and [`cli_extra.py`](feedback_agent/interfaces/cli_extra.py) |
 | [`llm/`](feedback_agent/llm/) model access | provider protocol, Gemini, scripted, factory; [`caller.py`](feedback_agent/llm/caller.py) (retry and usage) |

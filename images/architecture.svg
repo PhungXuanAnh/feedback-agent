@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1260" height="972" viewBox="0 0 1260 972" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif" fill="#1F2933">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4B5563"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#C8453B"/>
+    </marker>
+    <style>
+      .title { font-size: 14px; font-weight: 700; }
+      .body { font-size: 12px; }
+      .small { font-size: 11px; }
+      .note { font-size: 11px; font-style: italic; fill: #4B5563; }
+      .file { font-family: 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace; font-size: 10.5px; font-weight: 400; fill: #6B7280; }
+      .mono { font-family: 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace; font-size: 10.5px; }
+      .code { fill: #E8F0FB; stroke: #4A78C2; stroke-width: 1.5; }
+      .llm { fill: #E6F4EA; stroke: #3C8D50; stroke-width: 1.5; }
+      .human { fill: #F1E8F8; stroke: #8A55B8; stroke-width: 1.5; }
+      .fail { fill: #FDECEC; stroke: #C8453B; stroke-width: 1.2; stroke-dasharray: 5 3; }
+      .degraded { fill: #FFF1E0; stroke: #D9822B; stroke-width: 1.5; }
+      .neutral { fill: #F3F4F6; stroke: #8A8F98; stroke-width: 1.2; }
+      .data { fill: #FFF6E0; stroke: #C29A3A; stroke-width: 1.5; }
+      .flow { stroke: #4B5563; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .back { stroke: #4B5563; stroke-width: 1.4; fill: none; stroke-dasharray: 6 3; marker-end: url(#arrow); }
+      .rail { stroke: #4B5563; stroke-width: 1.4; fill: none; stroke-dasharray: 6 3; }
+      .failflow { stroke: #C8453B; stroke-width: 1.3; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrow-red); }
+      .pill-text { font-size: 11px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="1260" height="972" fill="#FFFFFF"/>
+
+  <!-- Title -->
+  <text x="20" y="30" font-size="20" font-weight="700">Agentic Customer Feedback System: architecture</text>
+  <text x="20" y="52" class="body" fill="#4B5563">Fixed 6-step pipeline + one bounded tool-calling agent · LLM where language matters, code where it must be exact · paths under feedback_agent/</text>
+
+  <!-- Pipeline frame (the orchestrator) -->
+  <rect x="20" y="66" width="1220" height="882" rx="10" fill="none" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="36" y="90" class="title" fill="#374151">Pipeline (the orchestrator) · owns state, caps and trace_id · code decides the control flow <tspan class="file" dx="6">core/pipeline.py</tspan></text>
+
+  <!-- 1 Intake -->
+  <rect x="50" y="110" width="760" height="50" rx="8" class="code"/>
+  <text x="66" y="131" class="title">1 · Intake (code)</text>
+  <text x="798" y="131" class="file" text-anchor="end">schemas.py · interfaces/api.py, cli.py</text>
+  <text x="66" y="149" class="body">Pydantic: text + customer email + channel + received_at · length cap · feedback id</text>
+  <line x1="430" y1="160" x2="430" y2="180" class="flow"/>
+
+  <!-- 2 Injection guard -->
+  <rect x="50" y="180" width="760" height="50" rx="8" class="code"/>
+  <text x="66" y="201" class="title">2 · Injection guard (code)</text>
+  <text x="798" y="201" class="file" text-anchor="end">core/guard.py</text>
+  <text x="66" y="219" class="body">regex flags injection_suspected (never blocks) · text wrapped in escaped &lt;customer_feedback&gt; tags</text>
+  <line x1="430" y1="230" x2="430" y2="250" class="flow"/>
+
+  <!-- 3 Classify -->
+  <rect x="50" y="250" width="760" height="65" rx="8" class="llm"/>
+  <text x="66" y="271" class="title">3 · Classify (1 schema-forced LLM call + code)</text>
+  <text x="798" y="271" class="file" text-anchor="end">core/classify.py</text>
+  <text x="66" y="289" class="body">LLM: category + up to 2 alternatives · sentiment · urgency · confidence</text>
+  <text x="66" y="306" class="body">code: urgency floor rules · low confidence or "unclear" → needs_human_triage</text>
+
+  <!-- 4-5 Agent loop container -->
+  <rect x="40" y="340" width="780" height="360" rx="10" fill="#F7FBF8" stroke="#3C8D50" stroke-width="1.5"/>
+  <line x1="430" y1="315" x2="430" y2="393" class="flow"/>
+  <text x="56" y="362" class="title">4–5 · Agent loop <tspan class="file" dx="6">core/agent.py</tspan></text>
+  <text x="56" y="380" class="body">LLM picks tools + queries; code enforces rules</text>
+  <text x="560" y="362" class="small" fill="#374151">read-only tools: the agent only proposes,</text>
+  <text x="560" y="378" class="small" fill="#374151">it cannot refund, close a ticket or email</text>
+
+  <!-- LLM turn -->
+  <rect x="320" y="395" width="220" height="46" rx="8" class="llm"/>
+  <text x="430" y="415" class="title" text-anchor="middle">LLM turn n ≤ 4</text>
+  <text x="430" y="432" class="small" text-anchor="middle">Gemini via adapter (scripted in tests)</text>
+
+  <!-- branches out of the LLM turn -->
+  <line x1="360" y1="441" x2="240" y2="478" class="flow"/>
+  <text x="282" y="452" class="small" text-anchor="end" font-weight="700">submit_report</text>
+  <line x1="500" y1="441" x2="620" y2="478" class="flow"/>
+  <text x="572" y="452" class="small" font-weight="700">retrieval calls (parallel)</text>
+
+  <!-- Evidence gate -->
+  <rect x="60" y="478" width="360" height="52" rx="8" class="code"/>
+  <text x="76" y="498" class="title">Evidence gate (code)</text>
+  <text x="408" y="498" class="file" text-anchor="end">core/evidence.py</text>
+  <text x="76" y="517" class="body">all 3 sources consulted? not_found counts, error does not</text>
+  <line x1="240" y1="530" x2="240" y2="550" class="flow"/>
+
+  <!-- Grounding validator -->
+  <rect x="60" y="550" width="360" height="80" rx="8" class="code"/>
+  <text x="76" y="570" class="title">Grounding validator (code)</text>
+  <text x="408" y="570" class="file" text-anchor="end">core/validator.py</text>
+  <text x="76" y="588" class="body">cited ids ∈ this run's tool results · each action's basis</text>
+  <text x="76" y="605" class="body">allows it · issue_refund: invoice, ≤ cap, window, tier</text>
+  <text x="76" y="622" class="note">shared: also checks the template report and officer overrides</text>
+
+  <!-- shared return rail: missing source / invalid draft -->
+  <path d="M60,504 H48" class="rail"/>
+  <path d="M60,590 H48 V418 H318" class="back"/>
+  <text x="56" y="410" class="small" fill="#374151">error message back (1 repair)</text>
+
+  <!-- degraded template -->
+  <line x1="185" y1="630" x2="185" y2="646" class="flow"/>
+  <rect x="60" y="646" width="250" height="44" rx="8" class="degraded"/>
+  <text x="74" y="664" class="body" font-weight="700">still invalid → code rebuilds</text>
+  <text x="74" y="681" class="small">degraded_template · grounding_failed</text>
+  <line x1="185" y1="690" x2="185" y2="722" class="flow"/>
+
+  <!-- valid path -->
+  <line x1="390" y1="630" x2="390" y2="722" class="flow"/>
+  <text x="396" y="676" class="small" font-weight="700">valid</text>
+
+  <!-- Tool executor -->
+  <rect x="440" y="478" width="360" height="80" rx="8" class="code"/>
+  <text x="456" y="498" class="title">Tool executor (code)</text>
+  <text x="788" y="498" class="file" text-anchor="end">core/tool_executor.py</text>
+  <text x="456" y="516" class="body">validates args · customer scope locked to metadata</text>
+  <text x="456" y="533" class="body">cache · budget ≤ 6 calls · 1 retry</text>
+  <text x="456" y="550" class="note">shared: also runs the degraded path's lookups</text>
+  <line x1="498" y1="558" x2="498" y2="572" class="flow"/>
+  <line x1="620" y1="558" x2="620" y2="572" class="flow"/>
+  <line x1="742" y1="558" x2="742" y2="572" class="flow"/>
+
+  <!-- tools -->
+  <rect x="440" y="572" width="116" height="34" rx="6" class="neutral"/>
+  <text x="498" y="593" class="mono" text-anchor="middle">get_cs_guidelines</text>
+  <rect x="562" y="572" width="116" height="34" rx="6" class="neutral"/>
+  <text x="620" y="593" class="mono" text-anchor="middle">lookup_customer</text>
+  <rect x="684" y="572" width="116" height="34" rx="6" class="neutral"/>
+  <text x="742" y="593" class="mono" text-anchor="middle">search_policies</text>
+  <text x="800" y="619" class="file" text-anchor="end">core/tools.py</text>
+
+  <!-- results back to the LLM -->
+  <path d="M800,500 H810 V418 H542" class="back"/>
+  <text x="556" y="410" class="small" fill="#374151">results: found | not_found | error</text>
+
+  <!-- cap note -->
+  <rect x="440" y="626" width="360" height="64" rx="8" class="neutral"/>
+  <text x="456" y="645" class="body" font-weight="700">Last turn reserved for submit_report (tool_choice)</text>
+  <text x="456" y="662" class="body">missing sources → forced_by_system lookups (≤ 3)</text>
+  <text x="456" y="679" class="body">flag step_limit_reached · confidence low</text>
+
+  <!-- Report -->
+  <rect x="50" y="722" width="760" height="50" rx="8" class="code"/>
+  <text x="66" y="743" class="title">Report (code fills the rest)</text>
+  <text x="798" y="743" class="file" text-anchor="end">core/report.py</text>
+  <text x="66" y="761" class="body">category / urgency / alternatives from classify · flags the LLM cannot remove · confidence = formula, not the LLM</text>
+  <line x1="430" y1="772" x2="430" y2="792" class="flow"/>
+
+  <!-- 6 Human review -->
+  <rect x="50" y="792" width="760" height="96" rx="8" class="human"/>
+  <text x="66" y="814" class="title">6 · Human review queue <tspan class="file" dx="6">core/hitl.py</tspan></text>
+  <text x="66" y="834" class="body">a CS officer decides; actions run only after approval</text>
+  <text x="66" y="852" class="body">audit in SQLite: who, when, before / after</text>
+  <text x="66" y="870" class="body">same decision again = idempotent · conflicting = 409</text>
+
+  <rect x="400" y="827" width="120" height="26" rx="13" fill="#FFFFFF" stroke="#8A55B8"/>
+  <text x="460" y="844" class="pill-text">pending_review</text>
+  <rect x="560" y="802" width="100" height="22" rx="11" fill="#FFFFFF" stroke="#3C8D50"/>
+  <text x="610" y="817" class="pill-text">approved</text>
+  <rect x="560" y="829" width="100" height="22" rx="11" fill="#FFFFFF" stroke="#3C8D50"/>
+  <text x="610" y="844" class="pill-text">overridden</text>
+  <rect x="560" y="856" width="100" height="22" rx="11" fill="#FFFFFF" stroke="#C8453B"/>
+  <text x="610" y="871" class="pill-text">rejected (final)</text>
+  <rect x="700" y="815" width="100" height="22" rx="11" fill="#FFFFFF" stroke="#4A78C2"/>
+  <text x="750" y="830" class="pill-text">executed (stub)</text>
+  <line x1="520" y1="838" x2="558" y2="813" class="flow"/>
+  <line x1="520" y1="840" x2="558" y2="840" class="flow"/>
+  <line x1="520" y1="842" x2="558" y2="867" class="flow"/>
+  <line x1="660" y1="813" x2="698" y2="824" class="flow"/>
+  <line x1="660" y1="840" x2="698" y2="830" class="flow"/>
+
+  <!-- Trace lane -->
+  <rect x="40" y="904" width="1180" height="30" rx="6" class="neutral"/>
+  <text x="56" y="924" class="body"><tspan font-weight="700">Trace (JSONL per trace_id):</tspan> every event · tool args + results · latency · tokens · cost · prompt_version · used by eval and audit <tspan class="file" dx="6">ops/trace.py</tspan></text>
+
+  <!-- Right column: failure paths and data -->
+  <line x1="810" y1="135" x2="848" y2="135" class="failflow"/>
+  <rect x="850" y="115" width="370" height="40" rx="8" class="fail"/>
+  <text x="864" y="140" class="body">invalid input → HTTP 422</text>
+
+  <line x1="810" y1="205" x2="848" y2="205" class="failflow"/>
+  <rect x="850" y="185" width="370" height="40" rx="8" class="fail"/>
+  <text x="864" y="210" class="body">suspicious text is still processed; confidence lowered</text>
+
+  <line x1="810" y1="282" x2="848" y2="282" class="failflow"/>
+  <rect x="850" y="262" width="370" height="40" rx="8" class="fail"/>
+  <text x="864" y="287" class="body">LLM fails → retry once → keyword rules</text>
+
+  <line x1="820" y1="432" x2="848" y2="432" class="failflow"/>
+  <rect x="850" y="395" width="370" height="80" rx="8" class="fail"/>
+  <text x="864" y="414" class="body" font-weight="700">LLM error / timeout → retry once →</text>
+  <text x="1208" y="414" class="file" text-anchor="end">core/pipeline.py</text>
+  <text x="864" y="431" class="body">degraded path (no LLM): keep successful results,</text>
+  <text x="864" y="448" class="body">call only the missing tools in a fixed order,</text>
+  <text x="864" y="465" class="body">template report, flag degraded</text>
+
+  <line x1="800" y1="589" x2="848" y2="589" class="flow"/>
+  <rect x="850" y="490" width="370" height="110" rx="8" class="data"/>
+  <text x="864" y="510" class="title">Mock data (read-only)</text>
+  <text x="1208" y="510" class="file" text-anchor="end">database.py · data/</text>
+  <text x="864" y="530" class="body">SQLite: customers · tickets · invoices</text>
+  <text x="864" y="548" class="body">JSON: guidelines · policies (with allowed_actions)</text>
+  <text x="864" y="566" class="body">policies filtered by as_of = received_at</text>
+  <text x="864" y="584" class="body">(effective / expires / supersedes)</text>
+
+  <line x1="820" y1="648" x2="848" y2="648" class="failflow"/>
+  <rect x="850" y="616" width="370" height="64" rx="8" class="fail"/>
+  <text x="864" y="635" class="body" font-weight="700">source still failing (status error) →</text>
+  <text x="864" y="652" class="body">incomplete_context, only escalate_to_human</text>
+  <text x="864" y="669" class="body">(basis GL-TRIAGE, loaded as system evidence)</text>
+
+  <line x1="810" y1="818" x2="848" y2="818" class="failflow"/>
+  <rect x="850" y="798" width="370" height="40" rx="8" class="fail"/>
+  <text x="864" y="823" class="body">storage error → API returns an error, never "queued"</text>
+
+  <!-- Legend -->
+  <rect x="850" y="854" width="14" height="12" rx="2" class="llm"/>
+  <text x="870" y="865" class="small">LLM step</text>
+  <rect x="932" y="854" width="14" height="12" rx="2" class="code"/>
+  <text x="952" y="865" class="small">code</text>
+  <rect x="994" y="854" width="14" height="12" rx="2" class="human"/>
+  <text x="1014" y="865" class="small">human</text>
+  <line x1="1062" y1="860" x2="1092" y2="860" class="failflow"/>
+  <text x="1098" y="865" class="small">failure path</text>
+  <line x1="1062" y1="882" x2="1092" y2="882" class="back"/>
+  <text x="1098" y="887" class="small">loop back</text>
+</svg>

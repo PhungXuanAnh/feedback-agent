@@ -13,11 +13,12 @@ from ..llm.caller import LLMCaller, LLMUnavailable
 from ..ops.trace import Event, Tracer, new_trace_id
 from ..schemas import Feedback, Report
 from . import guard
-from .agent import AgentLoop, RunState, ToolExecutor, policy_query
+from .agent import AgentLoop, policy_query
 from .classify import classify, classify_by_keywords
 from .evidence import SYSTEM_GUIDELINE, Evidence
 from .prompts import AGENT_PROMPT, CLASSIFY_PROMPT
 from .report import build_report
+from .tool_executor import RunState, ToolExecutor
 from .tools import FaultInjector, KnowledgeBase, ToolContext
 
 PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}

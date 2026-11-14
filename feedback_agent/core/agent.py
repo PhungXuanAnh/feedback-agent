@@ -3,7 +3,6 @@ rules around it: evidence gate, two separate caps, retry limits, forced lookups,
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -13,20 +12,12 @@ from pydantic import ValidationError
 from ..config import Settings
 from ..llm.base import Message, ToolCall, ToolChoice, ToolResponse, ToolSpec
 from ..llm.caller import LLMCaller, LLMUnavailable
-from ..ops.trace import Event, Tracer
+from ..ops.trace import Event
 from ..schemas import Classification, Feedback, ReportDraft
 from . import guard
-from .evidence import Evidence
 from .prompts import AGENT_PROMPT, load_prompt
-from .tools import (
-    RETRIEVAL_TOOLS,
-    SOURCES,
-    ToolContext,
-    ToolResult,
-    ToolStatus,
-    run_tool,
-    tool_specs,
-)
+from .tool_executor import RunState, ToolExecutor
+from .tools import ToolResult, tool_specs
 from .validator import validate_draft
 
 SUBMIT_TOOL = ToolSpec(
@@ -37,7 +28,6 @@ SUBMIT_TOOL = ToolSpec(
     ReportDraft.model_json_schema(),
 )
 
-_PERSISTENT = ("source_unavailable", "source_failure")  # a source problem, not an LLM mistake
 _QSTOP = {
     "the",
     "a",
@@ -86,152 +76,6 @@ def policy_query(classification: Classification, feedback: Feedback) -> str:
     return (
         classification.category.value.replace("_", " ") + " " + " ".join(dict.fromkeys(words))[:80]
     ).strip()
-
-
-@dataclass
-class RunState:
-    feedback: Feedback
-    classification: Classification
-    tool_context: ToolContext
-    evidence: Evidence
-    tracer: Tracer
-    flags: set[str] = field(default_factory=set)
-
-
-class ToolExecutor:
-    """Runs tool calls with caching, budgets, one retry for transient errors and tracing."""
-
-    def __init__(self, run_state: RunState, max_tool_calls: int, max_forced_lookups: int):
-        self.run_state = run_state
-        self.max_tool_calls, self.max_forced_lookups = max_tool_calls, max_forced_lookups
-        self.llm_tool_calls = self.forced_calls = self.cache_hits = self.degraded_calls = 0
-        self.failed_sources: dict[str, str] = (
-            {}
-        )  # source -> error, after the single retry also failed
-        self._cache: dict[str, ToolResult] = {}
-
-    @staticmethod
-    def _cache_key(name: str, args: dict) -> str:
-        """Tool name + args with strings trimmed and lowercased, keys sorted.
-
-        So {"email": " A@x.com"} and {"email": "a@x.com"} share one cache entry.
-        """
-        normalized_args = {
-            k: (v.strip().lower() if isinstance(v, str) else v) for k, v in (args or {}).items()
-        }
-        return name + json.dumps(normalized_args, sort_keys=True, default=str)
-
-    def call(self, name: str, args: dict[str, Any], origin: str = "llm") -> ToolResult:
-        """Run one tool call under the run's rules and return its result (never raises).
-
-        Order: cache hit -> budget (only origin="llm" counts against max_tool_calls) -> run_tool,
-        retried once if retryable -> _record_result. origin: llm, forced_by_system (last-turn lookups)
-        or degraded (no-LLM path).
-        """
-        tracer, cache_key = self.run_state.tracer, self._cache_key(name, args)
-        if cache_key in self._cache:  # same call twice in a run: no new work, no budget
-            self.cache_hits += 1
-            tracer.emit(Event.tool_call, tool=name, args=args, origin=origin, cache_hit=True)
-            return self._cache[cache_key]
-        if origin == "llm" and self.llm_tool_calls >= self.max_tool_calls:
-            tracer.emit(
-                Event.tool_error, tool=name, args=args, origin=origin, error="tool_budget_exhausted"
-            )
-            return ToolResult(
-                name,
-                SOURCES.get(name, "unknown"),
-                ToolStatus.error,
-                error="tool_budget_exhausted",
-                message=f"tool call budget ({self.max_tool_calls}) used up; call submit_report",
-            )
-        # unreachable today: there are only 3 sources to force
-        if (
-            origin == "forced_by_system" and self.forced_calls >= self.max_forced_lookups
-        ):  # pragma: no cover
-            return ToolResult(
-                name,
-                SOURCES.get(name, "unknown"),
-                ToolStatus.error,
-                error="forced_budget_exhausted",
-            )
-        if origin == "llm":
-            self.llm_tool_calls += 1
-        elif origin == "forced_by_system":
-            self.forced_calls += 1
-        else:
-            self.degraded_calls += 1
-        for attempt in (1, 2):
-            tracer.emit(
-                Event.tool_call,
-                tool=name,
-                args=args,
-                origin=origin,
-                attempt=attempt,
-                cache_hit=False,
-            )
-            tool_result = run_tool(self.run_state.tool_context, name, args)
-            if tool_result.status is ToolStatus.error:
-                tracer.emit(
-                    Event.tool_error,
-                    tool=name,
-                    error=tool_result.error,
-                    message=tool_result.message,
-                    attempt=attempt,
-                    will_retry=tool_result.retryable and attempt == 1,
-                )
-                if tool_result.retryable and attempt == 1:
-                    continue  # one retry of a transient source error; it costs no extra budget
-            else:
-                tracer.emit(
-                    Event.tool_result,
-                    tool=name,
-                    status=tool_result.status.value,
-                    data=tool_result.data,
-                    message=tool_result.message,
-                )
-            break
-        self._record_result(tool_result, name, cache_key)
-        return tool_result
-
-    def _record_result(self, tool_result: ToolResult, name: str, cache_key: str) -> None:
-        """Book a result: evidence, flags, failed sources and an injection scan of its data.
-
-        Successes and LLM mistakes (out_of_scope, invalid_arguments) are cached; source errors are
-        not, so a later call can still succeed.
-        """
-        self.run_state.evidence.record(tool_result)
-        self.run_state.flags.update(tool_result.flags)
-        if tool_result.status is ToolStatus.error:
-            if tool_result.error in _PERSISTENT:
-                self.failed_sources[tool_result.source] = tool_result.error
-        else:
-            self.failed_sources.pop(tool_result.source, None)
-            hits = (
-                guard.find_injection_patterns(json.dumps(tool_result.data, default=str))
-                if tool_result.data
-                else []
-            )
-            if hits:
-                self.run_state.flags.add("injection_in_tool_result")
-                self.run_state.tracer.emit(
-                    Event.injection_guard, source=f"tool:{name}", patterns=hits
-                )
-        if tool_result.status is not ToolStatus.error or tool_result.error in (
-            "out_of_scope",
-            "invalid_arguments",
-        ):
-            self._cache[cache_key] = (
-                tool_result  # transient/source errors are not cached, so a later call can succeed
-            )
-
-    def counters(self) -> dict[str, int]:
-        """Tool counters for the report (tool_calls = calls the LLM made)."""
-        return {
-            "tool_calls": self.llm_tool_calls,
-            "forced_by_system": self.forced_calls,
-            "cache_hits": self.cache_hits,
-            "degraded_calls": self.degraded_calls,
-        }
 
 
 @dataclass
