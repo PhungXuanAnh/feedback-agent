@@ -227,18 +227,18 @@ One line per step in `traces/<trace_id>.jsonl`; no model reasoning is stored. Us
 
 ## 1.5. Evaluation and limitations
 
-- **Eval** ([`eval/RESULTS.md`](eval/RESULTS.md)): 14 labelled cases scored by code (category, urgency, allowed/forbidden actions, triage, sources retrieved, fabricated references, injection, caps, trace, latency). Only measured numbers, misses listed; with so few cases they describe this run set, not production quality. `python -m feedback_agent eval` needs a key.
+- **Eval** ([`eval/RESULTS.md`](eval/RESULTS.md)): 14 labelled cases scored by code (category, urgency, allowed/forbidden actions, triage, sources retrieved, fabricated references, injection attacks and benign messages wrongly flagged, caps, trace, latency). Only measured numbers, misses listed; with so few cases they describe this run set, not production quality. `python -m feedback_agent eval` needs a key.
 - **Cap sweep** (14 cases x 3 runs per setting, live model, `max_tool_calls` = 6):
 
   | `max_llm_turns` | normal completion | avg LLM turns | latency p50 / p95 |
   |---|---|---|---|
-  | 2 | 42/42 | 2.00 | 5.5 s / 11.6 s |
-  | 3 | 42/42 | 2.07 | 5.5 s / 11.2 s |
-  | 4 | 42/42 | 2.07 | 5.4 s / 11.8 s |
-  | 6 | 42/42 | 2.02 | 5.5 s / 10.9 s |
+  | 2 | 42/42 | 2.00 | 9.8 s / 13.9 s |
+  | 3 | 42/42 | 2.12 | 9.5 s / 15.9 s |
+  | 4 | 42/42 | 2.05 | 9.6 s / 16.5 s |
+  | 6 | 42/42 | 2.07 | 10.1 s / 16.2 s |
 
   A normal run is 2 turns (three lookups requested in one LLM turn, then `submit_report`) and 2-6 behaved the same here. **Default 4** = the typical 2 + one repair + one spare; the cap is only a ceiling. 14 cases cannot show when a higher cap would matter.
-- **Live findings:** Gemini 3 thinking tokens count against `maxOutputTokens`: at 2048 the long `submit_report` call broke on 2 of 14 cases. `MAX_OUTPUT_TOKENS=8192`, `LLM_THINKING_LEVEL=low` and one retry fixed it (14/14 normal; median latency about 13 s to 5 s). Saved live outputs use that configuration and still pass the current validator.
+- **Live findings:** Gemini 3 thinking tokens count against `maxOutputTokens`: at 2048 the long `submit_report` call broke on 2 of 14 cases. `MAX_OUTPUT_TOKENS=8192`, `LLM_THINKING_LEVEL=low` and one retry fixed it (14/14 normal; median latency about 13 s to 5 s, measured on 2026-10-04; the 2026-11-14 sweep above ran at about 10 s with the same settings, so latency also moves with the provider's load). Saved live outputs use that configuration and still pass the current validator.
 - **Known limits:** the grounding validator proves a basis, not truth; the money-figure check, injection regexes and confidence score are heuristics; the sender scope lock only matches metadata (the sender is not authenticated);
   the executor is a stub; the hosted demo's daily limits are not hard billing caps (in-flight requests can exceed them). What production would need is in [`WRITEUP.md`](WRITEUP.md).
 
