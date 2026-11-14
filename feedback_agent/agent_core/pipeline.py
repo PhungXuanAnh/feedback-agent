@@ -67,9 +67,21 @@ class FeedbackPipeline:
         self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
-        """Run one feedback through steps 1-5 and return the saved report.
+        """Run one feedback through the six steps and return the saved report.
 
-        The report is saved as pending_review; StorageError propagates when saving fails.
+        The API or CLI has already validated the input (HTTP 422 otherwise).
+        1. Intake: give the feedback an id and open its trace.
+        2. Injection guard: regexes flag suspicious text; nothing is blocked.
+        3. Classify: one schema-forced LLM call plus urgency floor rules; keyword rules when the
+           LLM is unavailable.
+        4. Agent loop: the LLM calls the three retrieval tools and submits a draft report.
+        5. Report + validator: the draft must pass the grounding validator (one repair allowed);
+           without a valid draft, the degraded path fetches the missing sources by code and a
+           template is used. Code then adds classification, flags and computed confidence.
+        6. Review queue: the report is saved as pending_review; an officer decides later
+           through the API or CLI (hitl.py).
+
+        StorageError propagates, so a caller never reports "queued" when saving failed.
         """
         tracer = self._start_trace(feedback)
         flags = self._scan_for_injection(feedback, tracer)
@@ -162,7 +174,7 @@ class FeedbackPipeline:
         llm_caller: LLMCaller,
         llm_ok: bool,
     ) -> DraftOutcome:
-        """Steps 4-5: the agent loop drafts the report; without a draft, the degraded path runs."""
+        """Steps 4-5: the agent loop drafts a validated report; if not, the degraded path runs."""
         if llm_ok:
             agent_result = AgentLoop(run_state, tool_executor, llm_caller, self.settings).run()
             draft, llm_turns = agent_result.draft, agent_result.llm_turns
@@ -188,7 +200,7 @@ class FeedbackPipeline:
     def _build_report(
         self, run_state: RunState, tool_executor: ToolExecutor, outcome: DraftOutcome
     ) -> Report:
-        """Report: code fills classification, flags and confidence around the draft or template."""
+        """Step 5, report: code fills classification, flags and confidence around the draft."""
         tracer = run_state.tracer
         counters = {"llm_turns": outcome.llm_turns, **tool_executor.counters(), **tracer.totals()}
         report = build_report(
@@ -219,7 +231,7 @@ class FeedbackPipeline:
         return report
 
     def _save(self, run_state: RunState, report: Report) -> None:
-        """Save the feedback and the report (status pending_review) for human review."""
+        """Step 6, review queue: save the feedback and the report as pending_review."""
         self.database.save_feedback(
             run_state.feedback,
             "injection_suspected" in run_state.flags,
