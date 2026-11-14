@@ -93,10 +93,7 @@ class FeedbackPipeline:
         llm_caller = LLMCaller(self.provider, self.settings, tracer)
         classification, llm_ok = self._classify(llm_caller, feedback, tracer)
         # 4. Agent loop, and the validator half of step 5 (or the degraded path)
-        case_file = self._open_case_file(feedback, classification, flags, tracer)
-        tool_executor = ToolExecutor(
-            case_file, self.settings.max_tool_calls, self.settings.max_forced_lookups
-        )
+        case_file, tool_executor = self._open_case_file(feedback, classification, flags, tracer)
         outcome = self._draft_report(case_file, tool_executor, llm_caller, llm_ok)
         # 5. Report
         report = self._build_report(case_file, tool_executor, outcome)
@@ -157,8 +154,12 @@ class FeedbackPipeline:
 
     def _open_case_file(
         self, feedback: Feedback, classification: Classification, flags: set[str], tracer: Tracer
-    ) -> CaseFile:
-        """Open the case file that the agent loop, the degraded path and the report share."""
+    ) -> tuple[CaseFile, ToolExecutor]:
+        """Open the case file that the agent loop, the degraded path and the report share.
+
+        Its tool executor is created here and only here: one executor per case file, so the tool
+        budgets, the cache and the failed sources cover every tool call of the run.
+        """
         tool_context = ToolContext(
             self.database,
             self.knowledge_base,
@@ -178,7 +179,11 @@ class FeedbackPipeline:
                 guideline_id=SYSTEM_GUIDELINE,
                 allowed_actions=triage_guideline["allowed_actions"],
             )
-        return CaseFile(feedback, classification, tool_context, evidence, tracer, flags)
+        case_file = CaseFile(feedback, classification, tool_context, evidence, tracer, flags)
+        tool_executor = ToolExecutor(
+            case_file, self.settings.max_tool_calls, self.settings.max_forced_lookups
+        )
+        return case_file, tool_executor
 
     def _draft_report(
         self,
