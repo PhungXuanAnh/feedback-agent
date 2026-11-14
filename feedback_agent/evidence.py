@@ -23,36 +23,36 @@ class Evidence:
     system_evidence: dict[str, dict] = field(default_factory=dict)  # GL-TRIAGE: not one of the 3 sources
 
     # ------------------------------------------------------------ recording
-    def record(self, r: ToolResult) -> None:
-        if r.source not in REQUIRED_SOURCES:
+    def record(self, tool_result: ToolResult) -> None:
+        if tool_result.source not in REQUIRED_SOURCES:
             return
-        if r.status is ToolStatus.error:
-            self.source_errors[r.source] = r.error or "error"
+        if tool_result.status is ToolStatus.error:
+            self.source_errors[tool_result.source] = tool_result.error or "error"
             return
-        self.consulted.add(r.source)
-        self.source_errors.pop(r.source, None)
-        if r.status is ToolStatus.found and r.data:
-            if r.source == "guidelines":
-                self.guidelines[r.data["guideline_id"]] = r.data
-            elif r.source == "customer":
-                self.customer = r.data
+        self.consulted.add(tool_result.source)
+        self.source_errors.pop(tool_result.source, None)
+        if tool_result.status is ToolStatus.found and tool_result.data:
+            if tool_result.source == "guidelines":
+                self.guidelines[tool_result.data["guideline_id"]] = tool_result.data
+            elif tool_result.source == "customer":
+                self.customer = tool_result.data
             else:
-                self.policies.update({p["policy_id"]: p for p in r.data["policies"]})
+                self.policies.update({policy["policy_id"]: policy for policy in tool_result.data["policies"]})
 
     # ------------------------------------------------------------- queries
     @property
     def missing_sources(self) -> list[str]:
-        return [s for s in REQUIRED_SOURCES if s not in self.consulted]
+        return [source for source in REQUIRED_SOURCES if source not in self.consulted]
 
     @property
     def customer_found(self) -> bool:
         return self.customer is not None
 
-    def guideline(self, gid: str) -> Optional[dict]:
-        return self.guidelines.get(gid) or self.system_evidence.get(gid)
+    def guideline(self, guideline_id: str) -> Optional[dict]:
+        return self.guidelines.get(guideline_id) or self.system_evidence.get(guideline_id)
 
-    def policy(self, pid: str) -> Optional[dict]:
-        return self.policies.get(pid)
+    def policy(self, policy_id: str) -> Optional[dict]:
+        return self.policies.get(policy_id)
 
     def record_for(self, ident: str) -> Optional[dict]:
         return self.guideline(ident) or self.policy(ident)
@@ -62,15 +62,16 @@ class Evidence:
 
     def money_values(self) -> set[str]:
         """Normalised money figures known from records: invoice amounts, duplicate groups, policy caps."""
-        vals: list[float] = [p["max_amount"] for p in self.policies.values() if p.get("max_amount") is not None]
+        amounts: list[float] = [policy["max_amount"] for policy in self.policies.values()
+                                if policy.get("max_amount") is not None]
         if self.customer:
-            vals += [i["amount"] for i in self.customer["recent_invoices"]]
-            vals += [g["amount"] for g in self.customer["duplicate_charge_candidates"]]
-        out = set()
-        for v in vals:
-            t = f"{v:.2f}".rstrip("0").rstrip(".")
-            out.add(t)
-        return out
+            amounts += [invoice["amount"] for invoice in self.customer["recent_invoices"]]
+            amounts += [group["amount"] for group in self.customer["duplicate_charge_candidates"]]
+        normalized = set()
+        for amount in amounts:
+            text = f"{amount:.2f}".rstrip("0").rstrip(".")
+            normalized.add(text)
+        return normalized
 
     def numbers_text(self) -> str:
         return str(self.to_dict())
@@ -82,7 +83,9 @@ class Evidence:
                 "source_errors": self.source_errors, "system_evidence": self.system_evidence}
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Evidence":
-        return cls(as_of=date.fromisoformat(d["as_of"]), guidelines=d["guidelines"], policies=d["policies"],
-                   customer=d["customer"], consulted=set(d["consulted"]), source_errors=d["source_errors"],
-                   system_evidence=d["system_evidence"])
+    def from_dict(cls, stored: dict[str, Any]) -> "Evidence":
+        return cls(as_of=date.fromisoformat(stored["as_of"]), guidelines=stored["guidelines"],
+                   policies=stored["policies"],
+                   customer=stored["customer"], consulted=set(stored["consulted"]),
+                   source_errors=stored["source_errors"],
+                   system_evidence=stored["system_evidence"])

@@ -9,7 +9,7 @@ def test_guidelines_found_and_not_found(make_ctx, kb):
     ctx = make_ctx()
     r = run_tool(ctx, "get_cs_guidelines", {"category": "billing_issue"})
     assert r.status is ToolStatus.found and r.data["guideline_id"] == "GL-BILL-01"
-    ctx.kb = KnowledgeBase([g for g in kb.guidelines if g["category"] != "praise"], kb.policies)
+    ctx.knowledge_base = KnowledgeBase([g for g in kb.guidelines if g["category"] != "praise"], kb.policies)
     assert run_tool(ctx, "get_cs_guidelines", {"category": "praise"}).status is ToolStatus.not_found
     bad = run_tool(ctx, "get_cs_guidelines", {"category": "nonsense"})
     assert bad.status is ToolStatus.error and bad.error == "invalid_arguments"  # error != not_found

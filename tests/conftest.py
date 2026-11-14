@@ -25,7 +25,7 @@ def kb():
 @pytest.fixture()
 def make_ctx(store, kb):
     def _make(email="billing@orchid-robotics.example", customer_id=None, as_of=AS_OF, **kw):
-        return ToolContext(store=store, kb=kb, metadata_email=email, metadata_customer_id=customer_id,
+        return ToolContext(store=store, knowledge_base=kb, metadata_email=email, metadata_customer_id=customer_id,
                            as_of=as_of, **kw)
     return _make
 

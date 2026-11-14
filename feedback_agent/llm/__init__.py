@@ -14,16 +14,17 @@ class ConfigError(ValueError):
     pass
 
 
-def _gemini(s: Settings, **_: Any) -> LLMProvider:
-    if not s.llm_api_key:
+def _gemini(settings: Settings, **_: Any) -> LLMProvider:
+    if not settings.llm_api_key:
         raise ConfigError("GEMINI_API_KEY (or LLM_API_KEY) is not set; use LLM_PROVIDER=scripted for offline runs")
-    if not s.llm_model:
+    if not settings.llm_model:
         raise ConfigError("LLM_MODEL is not set (see .env.example)")
-    return GeminiProvider(s.llm_api_key, s.llm_model, s.llm_base_url, s.llm_temperature, s.llm_timeout_s,
-                          s.llm_thinking_level)
+    return GeminiProvider(settings.llm_api_key, settings.llm_model, settings.llm_base_url, settings.llm_temperature,
+                          settings.llm_timeout_s,
+                          settings.llm_thinking_level)
 
 
-def _scripted(s: Settings, script: Any = None, **_: Any) -> LLMProvider:
+def _scripted(settings: Settings, script: Any = None, **_: Any) -> LLMProvider:
     if script is None:
         raise ConfigError("the scripted provider needs a script (turns list or path to a JSON file)")
     return ScriptedProvider(script) if isinstance(script, list) else ScriptedProvider.from_file(script)
@@ -34,7 +35,7 @@ PROVIDERS: dict[str, Callable[..., LLMProvider]] = {"gemini": _gemini, "scripted
 
 def get_provider(settings: Settings, **kwargs: Any) -> LLMProvider:
     try:
-        make = PROVIDERS[settings.llm_provider]
+        factory = PROVIDERS[settings.llm_provider]
     except KeyError:
         raise ConfigError(f"Unknown LLM_PROVIDER {settings.llm_provider!r}; available: {sorted(PROVIDERS)}") from None
-    return make(settings, **kwargs)
+    return factory(settings, **kwargs)

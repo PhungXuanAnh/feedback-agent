@@ -100,7 +100,7 @@ TOOL_DESCRIPTIONS = {
 
 
 def tool_specs(include_submit: Any = None) -> list[ToolSpec]:
-    specs = [ToolSpec(n, TOOL_DESCRIPTIONS[n], ARG_MODELS[n].model_json_schema()) for n in RETRIEVAL_TOOLS]
+    specs = [ToolSpec(name, TOOL_DESCRIPTIONS[name], ARG_MODELS[name].model_json_schema()) for name in RETRIEVAL_TOOLS]
     if include_submit is not None:
         specs.append(include_submit)
     return specs
@@ -111,12 +111,12 @@ _STOP = {"the", "a", "an", "of", "to", "for", "and", "or", "in", "on", "is", "ar
          "it", "this", "that", "at", "as", "from", "customer", "customers", "any", "may", "must"}
 
 
-def _stem(t: str) -> str:
-    return t[:-1] if len(t) > 3 and t.endswith("s") else t
+def _stem(token: str) -> str:
+    return token[:-1] if len(token) > 3 and token.endswith("s") else token
 
 
 def _tokens(text: str) -> set[str]:
-    return {_stem(t) for t in re.findall(r"[a-z0-9]+", text.lower()) if len(t) > 1 and t not in _STOP}
+    return {_stem(token) for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 1 and token not in _STOP}
 
 
 MIN_SCORE = 2
@@ -131,38 +131,40 @@ class KnowledgeBase:
 
     @classmethod
     def load(cls, data_dir: str | Path) -> "KnowledgeBase":
-        d = Path(data_dir)
-        return cls(json.loads((d / "guidelines.json").read_text("utf-8")),
-                   json.loads((d / "policies.json").read_text("utf-8")))
+        directory = Path(data_dir)
+        return cls(json.loads((directory / "guidelines.json").read_text("utf-8")),
+                   json.loads((directory / "policies.json").read_text("utf-8")))
 
     def guideline_for(self, category: str) -> Optional[dict]:
-        return next((g for g in self.guidelines if g["category"] == category), None)
+        return next((guideline for guideline in self.guidelines if guideline["category"] == category), None)
 
-    def guideline_by_id(self, gid: str) -> Optional[dict]:
-        return next((g for g in self.guidelines if g["guideline_id"] == gid), None)
+    def guideline_by_id(self, guideline_id: str) -> Optional[dict]:
+        return next((guideline for guideline in self.guidelines if guideline["guideline_id"] == guideline_id), None)
 
     def active_policies(self, as_of: date) -> list[dict]:
         """In force on `as_of`: effective_date <= as_of < expires_date, and not superseded by a policy
         that is itself in force (even when the old one has no expiry)."""
-        live = [p for p in self.policies
-                if date.fromisoformat(p["effective_date"]) <= as_of
-                and (p["expires_date"] is None or as_of < date.fromisoformat(p["expires_date"]))]
-        replaced = {old for p in live for old in p.get("supersedes", [])}
-        return [p for p in live if p["policy_id"] not in replaced]
+        in_force = [policy for policy in self.policies
+                    if date.fromisoformat(policy["effective_date"]) <= as_of
+                    and (policy["expires_date"] is None or as_of < date.fromisoformat(policy["expires_date"]))]
+        replaced = {old_id for policy in in_force for old_id in policy.get("supersedes", [])}
+        return [policy for policy in in_force if policy["policy_id"] not in replaced]
 
     def search_policies(self, query: str, category: Optional[str], top_k: int, as_of: date) -> list[dict]:
-        q = _tokens(query)
+        query_tokens = _tokens(query)
         scored = []
-        for p in self.active_policies(as_of):
-            kw = set().union(*[_tokens(k) for k in p["keywords"]]) if p["keywords"] else set()
-            text = _tokens(p["title"] + " " + p["text"]) - kw
-            score = 2 * len(q & kw) + len(q & text)
-            if category and category in p["categories"]:
+        for policy in self.active_policies(as_of):
+            keyword_tokens = set()
+            for keyword in policy["keywords"]:
+                keyword_tokens |= _tokens(keyword)
+            text_tokens = _tokens(policy["title"] + " " + policy["text"]) - keyword_tokens
+            score = 2 * len(query_tokens & keyword_tokens) + len(query_tokens & text_tokens)
+            if category and category in policy["categories"]:
                 score += 3  # boost only, never a filter
             if score >= MIN_SCORE:
-                scored.append((score, p))
-        scored.sort(key=lambda sp: (-sp[0], sp[1]["policy_id"]))
-        return [dict(p, score=s) for s, p in scored[:top_k]]
+                scored.append((score, policy))
+        scored.sort(key=lambda scored_policy: (-scored_policy[0], scored_policy[1]["policy_id"]))
+        return [dict(policy, score=policy_score) for policy_score, policy in scored[:top_k]]
 
 
 # ----------------------------------------------------------------- run context
@@ -184,7 +186,7 @@ class FaultInjector:
 @dataclass
 class ToolContext:
     store: Store
-    kb: KnowledgeBase
+    knowledge_base: KnowledgeBase
     metadata_email: str
     metadata_customer_id: Optional[str]
     as_of: date
@@ -198,91 +200,92 @@ def _months_between(start: date, end: date) -> int:
 def duplicate_charge_candidates(invoices: list[dict], max_gap_days: int = 3) -> list[dict]:
     """Paid invoices with the same amount at most `max_gap_days` apart (code-computed, not LLM)."""
     paid = sorted((i for i in invoices if i["status"] == "paid"), key=lambda i: (i["amount"], i["date"]))
-    out, used = [], set()
-    for i, a in enumerate(paid):
-        if a["invoice_id"] in used:
+    groups, grouped_ids = [], set()
+    for i, first in enumerate(paid):
+        if first["invoice_id"] in grouped_ids:
             continue
-        group = [a]
-        for b in paid[i + 1:]:
-            gap = abs((date.fromisoformat(b["date"]) - date.fromisoformat(a["date"])).days)
-            if b["amount"] == a["amount"] and gap <= max_gap_days and b["invoice_id"] not in used:
-                group.append(b)
+        group = [first]
+        for other in paid[i + 1:]:
+            gap = abs((date.fromisoformat(other["date"]) - date.fromisoformat(first["date"])).days)
+            if other["amount"] == first["amount"] and gap <= max_gap_days and other["invoice_id"] not in grouped_ids:
+                group.append(other)
         if len(group) > 1:
-            used.update(g["invoice_id"] for g in group)
-            out.append({"invoice_ids": [g["invoice_id"] for g in group], "amount": a["amount"],
-                        "dates": sorted({g["date"] for g in group})})
-    return out
+            grouped_ids.update(invoice["invoice_id"] for invoice in group)
+            groups.append({"invoice_ids": [invoice["invoice_id"] for invoice in group], "amount": first["amount"],
+                           "dates": sorted({invoice["date"] for invoice in group})})
+    return groups
 
 
 # ------------------------------------------------------------------ tool bodies
-def _get_cs_guidelines(ctx: ToolContext, a: GuidelinesArgs) -> ToolResult:
-    g = ctx.kb.guideline_for(a.category.value)
-    if not g:
+def _get_cs_guidelines(tool_context: ToolContext, args: GuidelinesArgs) -> ToolResult:
+    guideline = tool_context.knowledge_base.guideline_for(args.category.value)
+    if not guideline:
         return ToolResult("get_cs_guidelines", "guidelines", ToolStatus.not_found,
-                          message=f"No guideline for category {a.category.value}")
-    return ToolResult("get_cs_guidelines", "guidelines", ToolStatus.found, data=g)
+                          message=f"No guideline for category {args.category.value}")
+    return ToolResult("get_cs_guidelines", "guidelines", ToolStatus.found, data=guideline)
 
 
-def _lookup_customer(ctx: ToolContext, a: CustomerArgs) -> ToolResult:
-    tool, src = "lookup_customer", "customer"
-    if not a.email and not a.customer_id:
-        return ToolResult(tool, src, ToolStatus.error, error="invalid_arguments",
+def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResult:
+    tool_name, source = "lookup_customer", "customer"
+    if not args.email and not args.customer_id:
+        return ToolResult(tool_name, source, ToolStatus.error, error="invalid_arguments",
                           message="Provide email or customer_id from the feedback metadata.")
-    record = ctx.store.customer_by_email(ctx.metadata_email)
+    record = tool_context.store.customer_by_email(tool_context.metadata_email)
     # Scope lock: the lookup may only target the sender named in the feedback metadata.
-    if a.email and a.email.strip().lower() != ctx.metadata_email:
-        return ToolResult(tool, src, ToolStatus.error, error="out_of_scope", flags=["scope_violation"],
+    if args.email and args.email.strip().lower() != tool_context.metadata_email:
+        return ToolResult(tool_name, source, ToolStatus.error, error="out_of_scope", flags=["scope_violation"],
                           message="Only the sender of this feedback can be looked up.")
-    if a.customer_id and (record is None or a.customer_id != record["id"]):
-        return ToolResult(tool, src, ToolStatus.error, error="out_of_scope", flags=["scope_violation"],
+    if args.customer_id and (record is None or args.customer_id != record["id"]):
+        return ToolResult(tool_name, source, ToolStatus.error, error="out_of_scope", flags=["scope_violation"],
                           message="Only the sender of this feedback can be looked up.")
     if record is None:
-        return ToolResult(tool, src, ToolStatus.not_found,
+        return ToolResult(tool_name, source, ToolStatus.not_found,
                           message="No customer record for this sender; treat as unverified.")
-    tickets = ctx.store.tickets_for(record["id"])
-    invoices = ctx.store.invoices_for(record["id"])
+    tickets = tool_context.store.tickets_for(record["id"])
+    invoices = tool_context.store.invoices_for(record["id"])
     data = {
         "customer_id": record["id"], "name": record["name"], "email": record["email"], "tier": record["tier"],
         "signup_date": record["signup_date"],
-        "tenure_months": _months_between(date.fromisoformat(record["signup_date"]), ctx.as_of),
-        "open_tickets": [t for t in tickets if t["status"] == "open"],
+        "tenure_months": _months_between(date.fromisoformat(record["signup_date"]), tool_context.as_of),
+        "open_tickets": [ticket for ticket in tickets if ticket["status"] == "open"],
         "recent_invoices": invoices[:6],
         "duplicate_charge_candidates": duplicate_charge_candidates(invoices),
     }
-    return ToolResult(tool, src, ToolStatus.found, data=data)
+    return ToolResult(tool_name, source, ToolStatus.found, data=data)
 
 
-def _search_policies(ctx: ToolContext, a: PolicyArgs) -> ToolResult:
-    hits = ctx.kb.search_policies(a.query, a.category.value if a.category else None, a.top_k, ctx.as_of)
+def _search_policies(tool_context: ToolContext, args: PolicyArgs) -> ToolResult:
+    category = args.category.value if args.category else None
+    hits = tool_context.knowledge_base.search_policies(args.query, category, args.top_k, tool_context.as_of)
     if not hits:
         return ToolResult("search_policies", "policies", ToolStatus.not_found,
-                          data={"as_of": ctx.as_of.isoformat()},
+                          data={"as_of": tool_context.as_of.isoformat()},
                           message="No policy in force on the feedback date matched the query.")
     return ToolResult("search_policies", "policies", ToolStatus.found,
-                      data={"as_of": ctx.as_of.isoformat(), "policies": hits})
+                      data={"as_of": tool_context.as_of.isoformat(), "policies": hits})
 
 
 _BODIES = {"get_cs_guidelines": _get_cs_guidelines, "lookup_customer": _lookup_customer,
            "search_policies": _search_policies}
 
 
-def run_tool(ctx: ToolContext, name: str, raw_args: dict[str, Any]) -> ToolResult:
+def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> ToolResult:
     """Single attempt. Validates args (allow-list), injects faults, converts failures to `error`."""
     if name not in _BODIES:
         return ToolResult(name, "unknown", ToolStatus.error, error="unknown_tool")
-    src = SOURCES[name]
+    source = SOURCES[name]
     try:
         args = ARG_MODELS[name].model_validate(raw_args or {})
     except ValidationError as e:
-        msg = "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())[:300]
-        return ToolResult(name, src, ToolStatus.error, error="invalid_arguments", message=msg)
+        error_message = "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors())[:300]
+        return ToolResult(name, source, ToolStatus.error, error="invalid_arguments", message=error_message)
     try:
-        ctx.faults.check(name)
-        return _BODIES[name](ctx, args)
+        tool_context.faults.check(name)
+        return _BODIES[name](tool_context, args)
     except TransientToolError as e:
-        return ToolResult(name, src, ToolStatus.error, error="source_unavailable", message=str(e), retryable=True)
+        return ToolResult(name, source, ToolStatus.error, error="source_unavailable", message=str(e), retryable=True)
     except Exception as e:  # a broken source must never crash the run
-        return ToolResult(name, src, ToolStatus.error, error="source_failure", message=type(e).__name__)
+        return ToolResult(name, source, ToolStatus.error, error="source_failure", message=type(e).__name__)
 
 
 def tier_rank(tier: Optional[str]) -> int:

@@ -22,9 +22,9 @@ def open_store(settings: Settings) -> Store:
 
 def build_pipeline(settings: Settings, script: Any = None, faults: Optional[FaultInjector] = None,
                    provider: Any = None) -> FeedbackPipeline:
-    kb = KnowledgeBase.load(settings.data_dir)
+    knowledge_base = KnowledgeBase.load(settings.data_dir)
     provider = provider or get_provider(settings, script=script)
-    return FeedbackPipeline(settings, open_store(settings), kb, provider, faults)
+    return FeedbackPipeline(settings, open_store(settings), knowledge_base, provider, faults)
 
 
 __all__ = ["ROOT", "build_pipeline", "open_store"]

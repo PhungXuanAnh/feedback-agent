@@ -38,27 +38,28 @@ class Tracer:
         self.events: list[dict[str, Any]] = []
         self._price_in, self._price_out = settings.price_in, settings.price_out
         self._path: Optional[Path] = None
-        self._seq0 = 0
+        self._seq_offset = 0
         if enabled and settings.trace_dir:
             Path(settings.trace_dir).mkdir(parents=True, exist_ok=True)
             self._path = Path(settings.trace_dir) / f"{trace_id}.jsonl"
             if self._path.exists():  # continuing an existing trace (e.g. the human review step)
-                self._seq0 = sum(1 for _ in open(self._path, encoding="utf-8"))
+                self._seq_offset = sum(1 for _ in open(self._path, encoding="utf-8"))
         self.llm_calls = 0
         self.provider_calls = 0
         self._usage_missing = 0
         self._cost_sum = 0.0
         self.prompt_tokens: Optional[int] = None
         self.output_tokens: Optional[int] = None
-        self._t0 = time.monotonic()
+        self._started_at = time.monotonic()
 
     def emit(self, event: Event, **fields: Any) -> None:
-        rec = {"seq": self._seq0 + len(self.events) + 1, "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
-               "trace_id": self.trace_id, "event": event.value, **fields}
-        self.events.append(rec)
+        record = {"seq": self._seq_offset + len(self.events) + 1,
+                  "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+                  "trace_id": self.trace_id, "event": event.value, **fields}
+        self.events.append(record)
         if self._path:
             with open(self._path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(rec, default=str, ensure_ascii=False) + "\n")
+                fh.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
 
     def cost_of(self, usage: Optional[dict]) -> Any:
         """Estimated USD; only when prices are configured AND the provider reported usage."""
@@ -100,7 +101,7 @@ class Tracer:
                 "prompt_tokens": self.prompt_tokens, "output_tokens": self.output_tokens,
                 "cost_usd": round(self._cost_sum, 6) if priced else "unknown",
                 "usage_complete": self.provider_calls > 0 and self._usage_missing == 0,
-                "elapsed_ms": int((time.monotonic() - self._t0) * 1000)}
+                "elapsed_ms": int((time.monotonic() - self._started_at) * 1000)}
 
 
 def load_trace_by_id(trace_id: str, trace_dir: str) -> list[dict]:
@@ -111,18 +112,18 @@ def load_trace_by_id(trace_id: str, trace_dir: str) -> list[dict]:
 
 
 def load_trace(path_or_id: str, trace_dir: str) -> list[dict]:
-    p = Path(path_or_id)
-    if not p.exists():
-        p = Path(trace_dir) / f"{path_or_id}.jsonl"
-    return [json.loads(line) for line in p.read_text("utf-8").splitlines() if line.strip()]
+    path = Path(path_or_id)
+    if not path.exists():
+        path = Path(trace_dir) / f"{path_or_id}.jsonl"
+    return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line.strip()]
 
 
 def render_trace(events: list[dict]) -> str:
     """Human-readable trace: one block per event."""
-    out = []
-    for e in events:
-        extra = {k: v for k, v in e.items() if k not in ("seq", "ts", "trace_id", "event")}
+    lines = []
+    for event in events:
+        extra = {k: v for k, v in event.items() if k not in ("seq", "ts", "trace_id", "event")}
         body = json.dumps(extra, ensure_ascii=False, default=str)
-        out.append(f"#{e['seq']:02d} {e['event']:<24} {body if len(body) < 400 else body[:400] + ' ...'}")
+        lines.append(f"#{event['seq']:02d} {event['event']:<24} {body if len(body) < 400 else body[:400] + ' ...'}")
     head = f"trace {events[0]['trace_id']}" if events else "empty trace"
-    return head + "\n" + "\n".join(out)
+    return head + "\n" + "\n".join(lines)

@@ -34,21 +34,23 @@ class ScriptedProvider:
 
     @staticmethod
     def check_conversation(messages: list[Message]) -> None:
-        body = [m for m in messages if m.role != "system"]
-        if not body or body[0].role != "user":
+        conversation = [m for m in messages if m.role != "system"]
+        if not conversation or conversation[0].role != "user":
             raise ScriptError("conversation must start with a user message")
-        for prev, cur in zip(body, body[1:]):
-            if prev.role == "model" and prev.tool_calls:
-                want = [c.id for c in prev.tool_calls]
-                got = [r.call_id for r in cur.tool_responses] if cur.role == "tool" else None
-                if got != want:
-                    raise ScriptError(f"function calls {want} must be answered by one tool message with the "
-                                      f"same ids in order, got {got}")
-            elif cur.role == "tool":
+        for previous, current in zip(conversation, conversation[1:]):
+            if previous.role == "model" and previous.tool_calls:
+                expected_ids = [call.id for call in previous.tool_calls]
+                received_ids = None
+                if current.role == "tool":
+                    received_ids = [response.call_id for response in current.tool_responses]
+                if received_ids != expected_ids:
+                    raise ScriptError(f"function calls {expected_ids} must be answered by one tool message with the "
+                                      f"same ids in order, got {received_ids}")
+            elif current.role == "tool":
                 raise ScriptError("tool message without a preceding model turn that made calls")
-            elif cur.role == prev.role == "model":
+            elif current.role == previous.role == "model":
                 raise ScriptError("two consecutive model turns")
-        if body[-1].role == "model":
+        if conversation[-1].role == "model":
             raise ScriptError("conversation must end with a user or tool message")
 
     def generate(self, messages: list[Message], tools: list[ToolSpec], tool_choice: ToolChoice,
@@ -65,14 +67,14 @@ class ScriptedProvider:
             raise step
         if isinstance(step, dict):
             step = LLMTurn(text=step.get("text", ""), tool_calls=[
-                ToolCall(id=f"s{self.calls}_{i}", name=c["name"], args=c.get("args", {}))
-                for i, c in enumerate(step.get("tool_calls", []))])
-        names = {t.name for t in tools}
-        for c in step.tool_calls:
-            if c.name not in names:
-                raise ScriptError(f"scripted call to tool {c.name!r} that was not offered")
-            if tool_choice.mode == "any" and tool_choice.allowed and c.name not in tool_choice.allowed:
-                raise ScriptError(f"scripted call {c.name!r} violates tool_choice {tool_choice.allowed}")
+                ToolCall(id=f"s{self.calls}_{i}", name=call["name"], args=call.get("args", {}))
+                for i, call in enumerate(step.get("tool_calls", []))])
+        names = {tool.name for tool in tools}
+        for call in step.tool_calls:
+            if call.name not in names:
+                raise ScriptError(f"scripted call to tool {call.name!r} that was not offered")
+            if tool_choice.mode == "any" and tool_choice.allowed and call.name not in tool_choice.allowed:
+                raise ScriptError(f"scripted call {call.name!r} violates tool_choice {tool_choice.allowed}")
         if tool_choice.mode == "any" and not step.tool_calls:
             raise ScriptError("tool_choice=any requires a tool call")
         return step
@@ -83,12 +85,12 @@ class FaultInjectingProvider:
     error, so the retry fails too. Used to demo/test the degraded path in a controlled way."""
 
     def __init__(self, inner: Any, fail_from_call: int):
-        self._inner, self._from = inner, fail_from_call
+        self._inner, self._fail_from_call = inner, fail_from_call
         self.name, self.model = inner.name, inner.model
         self.calls = 0
 
     def generate(self, messages, tools, tool_choice, max_output_tokens: int = 2048) -> LLMTurn:
         self.calls += 1
-        if self.calls >= self._from:
+        if self.calls >= self._fail_from_call:
             raise LLMError("injected provider failure", transient=True)
         return self._inner.generate(messages, tools, tool_choice, max_output_tokens)

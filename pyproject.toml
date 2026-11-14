@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "httpx2"]
 
 [tool.setuptools]
 packages = ["feedback_agent", "feedback_agent.llm"]

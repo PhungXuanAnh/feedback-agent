@@ -15,9 +15,9 @@ _MONEY = re.compile(r"(?:\$\s?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\s?(?
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
-def _norm(n: str) -> str:
-    n = n.replace(",", "")
-    return n[:-2] if n.endswith(".0") else (n.rstrip("0").rstrip(".") if "." in n else n)
+def _norm(number: str) -> str:
+    number = number.replace(",", "")
+    return number[:-2] if number.endswith(".0") else (number.rstrip("0").rstrip(".") if "." in number else number)
 
 
 # Money figures the CUSTOMER wrote. Heuristic by design (no language understanding): a number counts as
@@ -32,8 +32,8 @@ _AFTER_CHARGE_WORD = re.compile(
 
 
 def feedback_money(text: str) -> set[str]:
-    marked = {_norm(m.group(1) or m.group(2)) for m in _MONEY.finditer(text)}
-    return marked | {_norm(m.group(1)) for m in _AFTER_CHARGE_WORD.finditer(text)}
+    marked = {_norm(match.group(1) or match.group(2)) for match in _MONEY.finditer(text)}
+    return marked | {_norm(match.group(1)) for match in _AFTER_CHARGE_WORD.finditer(text)}
 
 
 def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[str]:
@@ -42,94 +42,106 @@ def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[
     durations are not money sources. It does not check what the sentence CLAIMS about the money."""
     known = feedback_money(feedback_text) | evidence.money_values()
     issues = []
-    for m in _MONEY.finditer(summary):
-        if _norm(m.group(1) or m.group(2)) not in known:
-            issues.append(f"summary mentions amount {m.group(0).strip()!r} that is not a money amount in the feedback, "
-                          "an invoice of this customer or a policy limit")
+    for match in _MONEY.finditer(summary):
+        if _norm(match.group(1) or match.group(2)) not in known:
+            issues.append(f"summary mentions amount {match.group(0).strip()!r} that is not a money amount in the "
+                          "feedback, an invoice of this customer or a policy limit")
     source = feedback_text + " " + evidence.numbers_text()
-    for d in _ISO_DATE.findall(summary):
-        if d not in source:
-            issues.append(f"summary mentions date {d} that is in neither the feedback nor a tool result")
+    for date_text in _ISO_DATE.findall(summary):
+        if date_text not in source:
+            issues.append(f"summary mentions date {date_text} that is in neither the feedback nor a tool result")
     return issues
 
 
-def _refund_issues(a: SuggestedAction, ev: Evidence) -> list[str]:
+def _refund_issues(action: SuggestedAction, evidence: Evidence) -> list[str]:
     """issue_refund is the only money action: every condition is checked against run evidence."""
-    pols = [ev.policy(b) for b in a.basis if ev.policy(b) and ActionType.issue_refund.value in ev.policy(b)["allowed_actions"]]
-    if not pols:
+    refund_policies = []
+    for basis_id in action.basis:
+        policy = evidence.policy(basis_id)
+        if policy and ActionType.issue_refund.value in policy["allowed_actions"]:
+            refund_policies.append(policy)
+    if not refund_policies:
         return ["issue_refund needs a POLICY in basis whose allowed_actions include issue_refund (a guideline is not enough)"]
-    if not ev.customer_found:
+    if not evidence.customer_found:
         return ["issue_refund needs a verified customer record (lookup_customer returned not_found)"]
-    p = a.params
-    inv = next((i for i in ev.customer["recent_invoices"] if i["invoice_id"] == p.invoice_id), None)
-    if inv is None:
-        return [f"issue_refund invoice {p.invoice_id!r} is not an invoice of this customer in the lookup_customer result"]
-    if p.amount is None or p.amount <= 0 or p.amount > inv["amount"]:
-        return [f"issue_refund amount must be > 0 and <= invoice amount {inv['amount']}"]
-    if inv["status"] != "paid":
-        return [f"issue_refund invoice {inv['invoice_id']} is not paid (status={inv['status']})"]
-    age = (ev.as_of - date.fromisoformat(inv["date"])).days
-    dup_ids = {i for g in ev.customer["duplicate_charge_candidates"] for i in g["invoice_ids"]}
+    params = action.params
+    invoice = None
+    for candidate in evidence.customer["recent_invoices"]:
+        if candidate["invoice_id"] == params.invoice_id:
+            invoice = candidate
+            break
+    if invoice is None:
+        return [f"issue_refund invoice {params.invoice_id!r} is not an invoice of this customer in the lookup_customer result"]
+    if params.amount is None or params.amount <= 0 or params.amount > invoice["amount"]:
+        return [f"issue_refund amount must be > 0 and <= invoice amount {invoice['amount']}"]
+    if invoice["status"] != "paid":
+        return [f"issue_refund invoice {invoice['invoice_id']} is not paid (status={invoice['status']})"]
+    invoice_age_days = (evidence.as_of - date.fromisoformat(invoice["date"])).days
+    dup_ids = {invoice_id for group in evidence.customer["duplicate_charge_candidates"]
+               for invoice_id in group["invoice_ids"]}
     per_policy: list[str] = []
-    for pol in pols:  # valid if at least one cited refund policy has all its conditions satisfied
-        bad = []
-        if pol.get("max_amount") is not None and p.amount > pol["max_amount"]:
-            bad.append(f"amount {p.amount} exceeds max_amount {pol['max_amount']}")
-        if pol.get("window_days") is not None and not 0 <= age <= pol["window_days"]:
-            bad.append(f"invoice is {age} days old, window is {pol['window_days']} days")
-        if pol.get("requires_tier") and tier_rank(ev.customer["tier"]) < tier_rank(pol["requires_tier"]):
-            bad.append(f"tier {ev.customer['tier']} is below required tier {pol['requires_tier']}")
-        if pol.get("requires_duplicate_candidate") and inv["invoice_id"] not in dup_ids:
-            bad.append("invoice is not one of the duplicate_charge_candidates")
-        if not bad:
+    for policy in refund_policies:  # valid if at least one cited refund policy has all its conditions satisfied
+        problems = []
+        if policy.get("max_amount") is not None and params.amount > policy["max_amount"]:
+            problems.append(f"amount {params.amount} exceeds max_amount {policy['max_amount']}")
+        if policy.get("window_days") is not None and not 0 <= invoice_age_days <= policy["window_days"]:
+            problems.append(f"invoice is {invoice_age_days} days old, window is {policy['window_days']} days")
+        if policy.get("requires_tier") and tier_rank(evidence.customer["tier"]) < tier_rank(policy["requires_tier"]):
+            problems.append(f"tier {evidence.customer['tier']} is below required tier {policy['requires_tier']}")
+        if policy.get("requires_duplicate_candidate") and invoice["invoice_id"] not in dup_ids:
+            problems.append("invoice is not one of the duplicate_charge_candidates")
+        if not problems:
             return []
-        per_policy.append(f"{pol['policy_id']}: " + "; ".join(bad))
+        per_policy.append(f"{policy['policy_id']}: " + "; ".join(problems))
     return ["issue_refund conditions not met -> " + " | ".join(per_policy)
             + " (if you cannot show them, propose request_more_info or escalate_to_human instead)"]
 
 
-def validate_actions(actions: list[SuggestedAction], ev: Evidence, clarification: Optional[str]) -> list[str]:
+def validate_actions(actions: list[SuggestedAction], evidence: Evidence, clarification: Optional[str]) -> list[str]:
     issues: list[str] = []
-    n_refunds = sum(1 for a in actions if a.type is ActionType.issue_refund)
+    n_refunds = sum(1 for action in actions if action.type is ActionType.issue_refund)
     if n_refunds > 1:
         # Policy limits such as "up to N USD per request" apply to the whole report, not to each action, and
         # two refunds of one invoice would pay it twice. Keep it simple: one refund per report, the officer
         # handles any further invoices (same rule for the machine's draft and for an override).
         issues.append(f"{n_refunds} issue_refund actions in one report; propose at most ONE refund per report "
                       "(mention other invoices in the summary and use escalate_to_human or request_more_info)")
-    for n, a in enumerate(actions, 1):
-        tag = f"action {n} ({a.type.value})"
-        if not a.basis:
+    for n, action in enumerate(actions, 1):
+        tag = f"action {n} ({action.type.value})"
+        if not action.basis:
             issues.append(f"{tag}: basis is empty; cite guideline/policy ids from tool results")
             continue
-        unknown = [b for b in a.basis if ev.record_for(b) is None]
+        unknown = [basis_id for basis_id in action.basis if evidence.record_for(basis_id) is None]
         if unknown:
             issues.append(f"{tag}: basis ids not found in this run's tool results: {unknown}")
-        if not any((r := ev.record_for(b)) and a.type.value in r["allowed_actions"] for b in a.basis):
-            issues.append(f"{tag}: none of the basis records allows action type {a.type.value}")
-        if a.type is ActionType.issue_refund and not unknown:
-            issues += [f"{tag}: {m}" for m in _refund_issues(a, ev)]
-        if a.type is ActionType.request_more_info and not (clarification or "").strip():
+        if not any((record := evidence.record_for(basis_id)) and action.type.value in record["allowed_actions"]
+                   for basis_id in action.basis):
+            issues.append(f"{tag}: none of the basis records allows action type {action.type.value}")
+        if action.type is ActionType.issue_refund and not unknown:
+            issues += [f"{tag}: {m}" for m in _refund_issues(action, evidence)]
+        if action.type is ActionType.request_more_info and not (clarification or "").strip():
             issues.append(f"{tag}: fill draft_clarification_question (a question for the CS officer to ask)")
     return issues
 
 
-def validate_draft(draft: ReportDraft, ev: Evidence, feedback_text: str) -> list[str]:
+def validate_draft(draft: ReportDraft, evidence: Evidence, feedback_text: str) -> list[str]:
     issues: list[str] = []
-    bad_gl = [g for g in draft.cited_guidelines if ev.guideline(g) is None]
-    bad_pol = [p for p in draft.cited_policies if ev.policy(p) is None]
+    bad_gl = [guideline_id for guideline_id in draft.cited_guidelines if evidence.guideline(guideline_id) is None]
+    bad_pol = [policy_id for policy_id in draft.cited_policies if evidence.policy(policy_id) is None]
     if bad_gl or bad_pol:
         issues.append(f"cited ids not present in tool results of this run: {bad_gl + bad_pol}")
-    if not (draft.cited_guidelines or draft.cited_policies) and (ev.guidelines or ev.policies):
+    if not (draft.cited_guidelines or draft.cited_policies) and (evidence.guidelines or evidence.policies):
         issues.append("cite at least one guideline or policy that you used")
-    c = draft.customer_context
-    if ev.customer_found:
-        if not c.record_found or (c.customer_id and c.customer_id != ev.customer["customer_id"]) \
-                or (c.tier and c.tier != ev.customer["tier"]):
-            issues.append(f"customer_context must match the record: customer_id={ev.customer['customer_id']}, "
-                          f"tier={ev.customer['tier']}, record_found=true")
-    elif c.record_found or c.customer_id or c.tier:
+    customer_context = draft.customer_context
+    if evidence.customer_found:
+        record = evidence.customer
+        if not customer_context.record_found \
+                or (customer_context.customer_id and customer_context.customer_id != record["customer_id"]) \
+                or (customer_context.tier and customer_context.tier != record["tier"]):
+            issues.append(f"customer_context must match the record: customer_id={evidence.customer['customer_id']}, "
+                          f"tier={evidence.customer['tier']}, record_found=true")
+    elif customer_context.record_found or customer_context.customer_id or customer_context.tier:
         issues.append("customer was not found: use record_found=false and leave customer_id and tier empty")
-    issues += check_summary(draft.summary, feedback_text, ev)
-    issues += validate_actions(draft.suggested_actions, ev, draft.draft_clarification_question)
+    issues += check_summary(draft.summary, feedback_text, evidence)
+    issues += validate_actions(draft.suggested_actions, evidence, draft.draft_clarification_question)
     return issues

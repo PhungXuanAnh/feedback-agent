@@ -101,12 +101,12 @@ NOT_FOUND = {404: {"model": ErrorMessage, "description": "Not found"}}
 
 
 def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackPipeline] = None) -> FastAPI:
-    s = settings or Settings.from_env()
+    settings = settings or Settings.from_env()
     app = FastAPI(title="Feedback agent", version="0.1.0")
     state: dict[str, Any] = {"pipeline": pipeline}
-    store = pipeline.store if pipeline else open_store(s)
-    reviews = ReviewService(store, s)
-    guard = ApiGuard(s, store)
+    store = pipeline.store if pipeline else open_store(settings)
+    reviews = ReviewService(store, settings)
+    guard = ApiGuard(settings, store)
     protected = [Depends(guard.auth)]  # /health and the API docs stay open
 
     @app.get("/health")
@@ -120,19 +120,19 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackP
     def submit_feedback(body: FeedbackIn) -> Report:
         try:
             if state["pipeline"] is None:
-                state["pipeline"] = build_pipeline(s)
+                state["pipeline"] = build_pipeline(settings)
             try:
-                fb = Feedback(**body.model_dump(exclude_none=True))
+                feedback = Feedback(**body.model_dump(exclude_none=True))
             except ValidationError as e:  # same 422 shape as FastAPI's own body validation
                 raise RequestValidationError(
                     [{**x, "loc": ("body", *x["loc"])} for x in e.errors(include_url=False)]) from e
-            return state["pipeline"].process(fb)
+            return state["pipeline"].process(feedback)
         except (StorageError, ConfigError) as e:  # never claim the report was queued when it was not
             raise HTTPException(503, f"report not queued: {e}") from e
 
     @app.get("/reports", dependencies=protected, response_model=list[ReportSummary], responses=UNAUTHORIZED)
     def list_reports(status: Optional[str] = None) -> list[dict]:
-        return [pending_summary(r) for r in store.list_reports(status)]
+        return [pending_summary(row) for row in store.list_reports(status)]
 
     @app.get("/reports/{report_id}", dependencies=protected, response_model=ReportDetail,
              responses={**UNAUTHORIZED, **NOT_FOUND})
@@ -149,9 +149,9 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackP
                                "content": {"application/json": {"schema": {"anyOf": [
                                    {"$ref": "#/components/schemas/HTTPValidationError"},
                                    {"$ref": "#/components/schemas/ErrorMessage"}]}}}}})
-    def review(report_id: str, req: ReviewRequest) -> dict:
+    def review(report_id: str, review_request: ReviewRequest) -> dict:
         try:
-            return reviews.review(report_id, req)
+            return reviews.review(report_id, review_request)
         except ReviewError as e:
             raise HTTPException(e.status_code, str(e)) from e
 
@@ -159,7 +159,7 @@ def create_app(settings: Optional[Settings] = None, pipeline: Optional[FeedbackP
              responses={**UNAUTHORIZED, **NOT_FOUND})
     def trace(trace_id: str) -> list[dict]:
         try:
-            return load_trace_by_id(trace_id, s.trace_dir)
+            return load_trace_by_id(trace_id, settings.trace_dir)
         except FileNotFoundError:
             raise HTTPException(404, "trace not found") from None
 

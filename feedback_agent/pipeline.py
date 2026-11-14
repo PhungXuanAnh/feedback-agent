@@ -23,88 +23,97 @@ PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}
 
 
 class FeedbackPipeline:
-    def __init__(self, settings: Settings, store: Store, kb: KnowledgeBase, provider: LLMProvider,
+    def __init__(self, settings: Settings, store: Store, knowledge_base: KnowledgeBase, provider: LLMProvider,
                  faults: Optional[FaultInjector] = None):
-        self.s, self.store, self.kb, self.provider = settings, store, kb, provider
+        self.settings, self.store, self.knowledge_base, self.provider = settings, store, knowledge_base, provider
         self.faults = faults or FaultInjector()
 
-    def process(self, fb: Feedback) -> Report:
-        s, tr = self.s, Tracer(new_trace_id(), self.s)
-        fb.feedback_id = fb.feedback_id or "fb_" + uuid.uuid4().hex[:10]
-        tr.emit(Event.intake, feedback_id=fb.feedback_id, channel=fb.channel.value, chars=len(fb.text),
-                truncated=fb.truncated, received_at=fb.received_at.isoformat(), provider=self.provider.name,
-                model=self.provider.model, max_llm_turns=s.max_llm_turns, max_tool_calls=s.max_tool_calls,
-                prompt_versions=PROMPT_VERSIONS)
+    def process(self, feedback: Feedback) -> Report:
+        settings, tracer = self.settings, Tracer(new_trace_id(), self.settings)
+        feedback.feedback_id = feedback.feedback_id or "fb_" + uuid.uuid4().hex[:10]
+        tracer.emit(Event.intake, feedback_id=feedback.feedback_id, channel=feedback.channel.value,
+                    chars=len(feedback.text),
+                    truncated=feedback.truncated, received_at=feedback.received_at.isoformat(),
+                    provider=self.provider.name,
+                    model=self.provider.model, max_llm_turns=settings.max_llm_turns,
+                    max_tool_calls=settings.max_tool_calls,
+                    prompt_versions=PROMPT_VERSIONS)
         flags: set[str] = set()
-        hits = guard.scan(fb.text)
-        if hits:
+        injection_patterns = guard.scan(feedback.text)
+        if injection_patterns:
             flags.add("injection_suspected")
-            tr.emit(Event.injection_guard, source="feedback", patterns=hits)
+            tracer.emit(Event.injection_guard, source="feedback", patterns=injection_patterns)
 
-        caller = LLMCaller(self.provider, s, tr)
+        caller = LLMCaller(self.provider, settings, tracer)
         llm_ok = True
         try:
-            cls = classify(caller, fb)
+            classification = classify(caller, feedback)
         except LLMUnavailable as e:
             llm_ok = False
-            cls = keyword_classify(fb.text)
-            tr.emit(Event.degraded_path, step="classify", reason=str(e)[:200], fallback="keyword_rules")
-        tr.emit(Event.classification_completed, **cls.model_dump(mode="json"))
+            classification = keyword_classify(feedback.text)
+            tracer.emit(Event.degraded_path, step="classify", reason=str(e)[:200], fallback="keyword_rules")
+        tracer.emit(Event.classification_completed, **classification.model_dump(mode="json"))
 
-        ctx = ToolContext(self.store, self.kb, fb.customer_email, fb.customer_id, fb.as_of, self.faults)
-        ev = Evidence(as_of=fb.as_of)
-        triage = self.kb.guideline_by_id(SYSTEM_GUIDELINE)
-        if triage:  # system evidence: citable for escalate/request_more_info only; not one of the 3 sources
-            ev.system_evidence[SYSTEM_GUIDELINE] = triage
-            tr.emit(Event.system_evidence, guideline_id=SYSTEM_GUIDELINE, allowed_actions=triage["allowed_actions"])
-        st = RunState(fb, cls, ctx, ev, tr, flags)
-        ex = ToolExecutor(st, s.max_tool_calls, s.max_forced_lookups)
+        tool_context = ToolContext(self.store, self.knowledge_base, feedback.customer_email, feedback.customer_id,
+                                   feedback.as_of, self.faults)
+        evidence = Evidence(as_of=feedback.as_of)
+        triage_guideline = self.knowledge_base.guideline_by_id(SYSTEM_GUIDELINE)
+        if triage_guideline:  # system evidence: citable for escalate/request_more_info only; not one of the 3 sources
+            evidence.system_evidence[SYSTEM_GUIDELINE] = triage_guideline
+            tracer.emit(Event.system_evidence, guideline_id=SYSTEM_GUIDELINE,
+                        allowed_actions=triage_guideline["allowed_actions"])
+        run_state = RunState(feedback, classification, tool_context, evidence, tracer, flags)
+        executor = ToolExecutor(run_state, settings.max_tool_calls, settings.max_forced_lookups)
 
         draft, failed, rejected, reason, turns = None, {}, None, "", 0
         generated_by = self.provider.name
         if llm_ok:
-            res = AgentLoop(st, ex, caller, s).run()
-            draft, turns, failed = res.draft, res.llm_turns, res.failed_sources
+            agent_result = AgentLoop(run_state, executor, caller, settings).run()
+            draft, turns, failed = agent_result.draft, agent_result.llm_turns, agent_result.failed_sources
             reason = {"llm_unavailable": "LLM unavailable after retry", "grounding_failed": "grounding check failed twice",
                       "budget_exhausted": "step cap reached without a valid report",
-                      "incomplete_context": "a required source was unavailable"}.get(res.outcome, "")
-            if res.outcome == "grounding_failed":
+                      "incomplete_context": "a required source was unavailable"}.get(agent_result.outcome, "")
+            if agent_result.outcome == "grounding_failed":
                 flags.add("grounding_failed")
-            if res.outcome == "budget_exhausted":
+            if agent_result.outcome == "budget_exhausted":
                 flags.add("step_limit_reached")
-            if res.outcome == "llm_unavailable" and "llm_unavailable" not in flags:
+            if agent_result.outcome == "llm_unavailable" and "llm_unavailable" not in flags:
                 flags.add("llm_unavailable")
         else:
             reason = "LLM unavailable after retry"
             flags.add("llm_unavailable")
         if draft is None:
             if not failed:  # incomplete_context already knows which source is down: no point asking again
-                failed = self._degraded_lookups(st, ex, tr, reason)
+                failed = self._degraded_lookups(run_state, executor, tracer, reason)
             generated_by = "degraded_template"
 
-        counters = {"llm_turns": turns, **ex.counters(), **tr.totals()}
-        report = build_report(fb=fb, cls=cls, ev=ev, flags=flags, draft=draft, generated_by=generated_by,
-                              provider=self.provider.name, model=self.provider.model, trace_id=tr.trace_id,
+        counters = {"llm_turns": turns, **executor.counters(), **tracer.totals()}
+        report = build_report(feedback=feedback, classification=classification, evidence=evidence, flags=flags,
+                              draft=draft, generated_by=generated_by,
+                              provider=self.provider.name, model=self.provider.model, trace_id=tracer.trace_id,
                               prompt_versions=PROMPT_VERSIONS, counters=counters, template_reason=reason,
                               failed_sources=failed)
-        tr.emit(Event.report_generated, report_id=report.report_id, generated_by=generated_by,
-                confidence=report.confidence_level, score=report.confidence_score, flags=report.flags,
-                actions=[a.type.value for a in report.suggested_actions], counters=counters)
-        self.store.save_feedback(fb, "injection_suspected" in flags, cls, CLASSIFY_PROMPT, tr.trace_id)
-        self.store.save_report(report, ev.to_dict())  # StorageError propagates: never claim "queued"
+        tracer.emit(Event.report_generated, report_id=report.report_id, generated_by=generated_by,
+                    confidence=report.confidence_level, score=report.confidence_score, flags=report.flags,
+                    actions=[action.type.value for action in report.suggested_actions], counters=counters)
+        self.store.save_feedback(feedback, "injection_suspected" in flags, classification, CLASSIFY_PROMPT,
+                                 tracer.trace_id)
+        self.store.save_report(report, evidence.to_dict())  # StorageError propagates: never claim "queued"
         return report
 
     @staticmethod
-    def _degraded_lookups(st: RunState, ex: ToolExecutor, tr: Tracer, reason: str) -> dict:
+    def _degraded_lookups(run_state: RunState, executor: ToolExecutor, tracer: Tracer, reason: str) -> dict:
         """No-LLM path: keep everything that already succeeded, call only the missing sources."""
-        ev = st.ev
-        plan = {"guidelines": ("get_cs_guidelines", {"category": st.cls.category.value}),
-                "customer": ("lookup_customer", {"email": st.fb.customer_email}),
-                "policies": ("search_policies", {"query": policy_query(st.cls, st.fb),
-                                                 "category": st.cls.category.value})}
-        missing = list(ev.missing_sources)
-        tr.emit(Event.degraded_path, step="agent", reason=reason, reused=sorted(ev.consulted), missing=missing)
-        for src in missing:
-            name, args = plan[src]
-            ex.call(name, args, origin="degraded")
-        return {src: ex.failed.get(src) or ev.source_errors.get(src, "error") for src in ev.missing_sources}
+        evidence = run_state.evidence
+        plan = {"guidelines": ("get_cs_guidelines", {"category": run_state.classification.category.value}),
+                "customer": ("lookup_customer", {"email": run_state.feedback.customer_email}),
+                "policies": ("search_policies", {"query": policy_query(run_state.classification, run_state.feedback),
+                                                 "category": run_state.classification.category.value})}
+        missing = list(evidence.missing_sources)
+        tracer.emit(Event.degraded_path, step="agent", reason=reason, reused=sorted(evidence.consulted),
+                    missing=missing)
+        for source in missing:
+            name, args = plan[source]
+            executor.call(name, args, origin="degraded")
+        return {source: executor.failed.get(source) or evidence.source_errors.get(source, "error")
+                for source in evidence.missing_sources}

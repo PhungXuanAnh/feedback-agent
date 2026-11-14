@@ -36,24 +36,25 @@ _SEVERE = re.compile(r"\b(breach(ed)?|data leak|leaked|lawsuit|legal action|atto
                      r"ransomware|unauthori[sz]ed access|hacked|regulator)\b", re.I)
 
 
-def apply_floor(cls: Classification, text: str) -> Classification:
+def apply_floor(classification: Classification, text: str) -> Classification:
     reasons: list[str] = []
     floor = Urgency.low
-    if cls.category is Category.security_concern:
+    if classification.category is Category.security_concern:
         floor = Urgency.high
         reasons.append("security_concern")
     if _SEVERE.search(text):
         floor = Urgency.high
         reasons.append("severe_term")
-    if cls.category is Category.unclear or cls.confidence < TRIAGE_CONFIDENCE:
-        cls.urgency_uncertain = True  # unknown urgency defaults to medium, never lower
+    if classification.category is Category.unclear or classification.confidence < TRIAGE_CONFIDENCE:
+        classification.urgency_uncertain = True  # unknown urgency defaults to medium, never lower
         floor = max_urgency(floor, Urgency.medium)
         reasons.append("urgency_uncertain_default_medium")
-    cls.urgency = max_urgency(cls.urgency, floor)
-    cls.urgency_floor_reasons = reasons
-    cls.needs_human_triage = (cls.category is Category.unclear or cls.confidence < TRIAGE_CONFIDENCE
-                              or any(a.confidence >= TRIAGE_ALT_CONFIDENCE for a in cls.alternatives))
-    return cls
+    classification.urgency = max_urgency(classification.urgency, floor)
+    classification.urgency_floor_reasons = reasons
+    classification.needs_human_triage = (
+        classification.category is Category.unclear or classification.confidence < TRIAGE_CONFIDENCE
+        or any(alternative.confidence >= TRIAGE_ALT_CONFIDENCE for alternative in classification.alternatives))
+    return classification
 
 
 _KEYWORDS = [
@@ -71,26 +72,26 @@ _ABUSIVE = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|d
 
 def keyword_classify(text: str) -> Classification:
     """Degraded path when the LLM is unavailable: coarse, never confident, always sent to triage."""
-    category = next((c for c, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear)
+    category = next((candidate for candidate, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear)
     sentiment = (Sentiment.abusive if _ABUSIVE.search(text) else
                  Sentiment.positive if category is Category.praise else Sentiment.negative)
-    cls = Classification(category=category, sentiment=sentiment, urgency=Urgency.medium, confidence=0.4,
-                         rationale="keyword rules (LLM unavailable)", classified_by="keyword_rules")
-    return apply_floor(cls, text)
+    classification = Classification(category=category, sentiment=sentiment, urgency=Urgency.medium, confidence=0.4,
+                                    rationale="keyword rules (LLM unavailable)", classified_by="keyword_rules")
+    return apply_floor(classification, text)
 
 
-def classify(caller: LLMCaller, fb: Feedback) -> Classification:
+def classify(caller: LLMCaller, feedback: Feedback) -> Classification:
     """Raises LLMUnavailable when the provider fails or returns an unusable answer."""
-    msgs = [Message("system", load_prompt(CLASSIFY_PROMPT)),
-            Message("user", f"{wrap_feedback(fb.text)}\n\nChannel: {fb.channel.value}")]
-    turn = caller.call("classify", CLASSIFY_PROMPT, msgs, [CLASSIFY_TOOL],
-                       ToolChoice("any", ["classify_feedback"]))
-    call = next((c for c in turn.tool_calls if c.name == "classify_feedback"), None)
+    messages = [Message("system", load_prompt(CLASSIFY_PROMPT)),
+                Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}")]
+    llm_turn = caller.call("classify", CLASSIFY_PROMPT, messages, [CLASSIFY_TOOL],
+                           ToolChoice("any", ["classify_feedback"]))
+    call = next((tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"), None)
     if call is None:
         raise LLMUnavailable("classify_feedback was not called")
     try:
         args = ClassifyArgs.model_validate(call.args)
     except ValidationError as e:
         raise LLMUnavailable(f"invalid classification: {e.error_count()} schema errors") from e
-    cls = Classification(**args.model_dump(), classified_by="llm")
-    return apply_floor(cls, fb.text)
+    classification = Classification(**args.model_dump(), classified_by="llm")
+    return apply_floor(classification, feedback.text)

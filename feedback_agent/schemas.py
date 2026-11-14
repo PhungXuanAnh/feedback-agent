@@ -58,8 +58,8 @@ TIER_ORDER = ["standard", "pro", "enterprise"]
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def max_urgency(a: Urgency, b: Urgency) -> Urgency:
-    return a if URGENCY_ORDER.index(a) >= URGENCY_ORDER.index(b) else b
+def max_urgency(first: Urgency, second: Urgency) -> Urgency:
+    return first if URGENCY_ORDER.index(first) >= URGENCY_ORDER.index(second) else second
 
 
 # --------------------------------------------------------------------- intake

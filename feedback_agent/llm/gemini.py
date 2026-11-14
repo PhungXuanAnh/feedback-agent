@@ -28,24 +28,26 @@ def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dic
         rest = {k: v for k, v in schema.items() if k != "allOf"}
         return to_gemini_schema({**schema["allOf"][0], **rest}, defs)
     if "anyOf" in schema:
-        non_null = [s for s in schema["anyOf"] if not (isinstance(s, dict) and s.get("type") == "null")]
+        non_null = [option for option in schema["anyOf"]
+                    if not (isinstance(option, dict) and option.get("type") == "null")]
         rest = {k: v for k, v in schema.items() if k != "anyOf"}
         if len(non_null) == 1:
             return to_gemini_schema({**rest, **non_null[0]}, defs)
         return {"type": "string"}
-    out: dict[str, Any] = {}
+    reduced: dict[str, Any] = {}
     for k, v in schema.items():
         if k in _DROP or (k == "format" and v not in _ALLOWED_FORMATS):
             continue
         if k == "properties":
-            out[k] = {pk: to_gemini_schema(pv, defs) for pk, pv in v.items()}
+            reduced[k] = {property_name: to_gemini_schema(property_schema, defs) for property_name,
+                          property_schema in v.items()}
         elif k == "items":
-            out[k] = to_gemini_schema(v, defs)
+            reduced[k] = to_gemini_schema(v, defs)
         else:
-            out[k] = v
-    if "type" not in out and "enum" not in out:
-        out["type"] = "string"
-    return out
+            reduced[k] = v
+    if "type" not in reduced and "enum" not in reduced:
+        reduced["type"] = "string"
+    return reduced
 
 
 class GeminiProvider:
@@ -54,41 +56,41 @@ class GeminiProvider:
     def __init__(self, api_key: str, model: str, base_url: str = "https://generativelanguage.googleapis.com",
                  temperature: Optional[float] = None, timeout: float = 60.0, thinking_level: str = "",
                  client: Optional[httpx.Client] = None):
-        self._key = api_key
+        self._api_key = api_key
         self.model = model
-        self._base = base_url.rstrip("/")
+        self._base_url = base_url.rstrip("/")
         self._temperature = temperature
         self._thinking = thinking_level
         self._client = client or httpx.Client(timeout=timeout)
 
     # -------------------------------------------------------------- request
     def _contents(self, messages: list[Message]) -> tuple[Optional[dict], list[dict]]:
-        system = "\n\n".join(m.text for m in messages if m.role == "system")
+        system = "\n\n".join(message.text for message in messages if message.role == "system")
         contents: list[dict] = []
         api_ids: set[str] = set()
-        for m in messages:
-            if m.role == "system":
+        for message in messages:
+            if message.role == "system":
                 continue
-            if m.role == "user":
-                contents.append({"role": "user", "parts": [{"text": m.text}]})
-            elif m.role == "model":
-                if m.raw is not None:  # replay verbatim: keeps thought signatures intact
-                    contents.append(m.raw)
-                    api_ids |= {p["functionCall"]["id"] for p in m.raw.get("parts", [])
-                                if "functionCall" in p and p["functionCall"].get("id")}
+            if message.role == "user":
+                contents.append({"role": "user", "parts": [{"text": message.text}]})
+            elif message.role == "model":
+                if message.raw is not None:  # replay verbatim: keeps thought signatures intact
+                    contents.append(message.raw)
+                    api_ids |= {part["functionCall"]["id"] for part in message.raw.get("parts", [])
+                                if "functionCall" in part and part["functionCall"].get("id")}
                 else:
-                    parts: list[dict] = [{"text": m.text}] if m.text else []
-                    parts += [{"functionCall": {"name": c.name, "args": c.args}} for c in m.tool_calls]
+                    parts: list[dict] = [{"text": message.text}] if message.text else []
+                    parts += [{"functionCall": {"name": call.name, "args": call.args}} for call in message.tool_calls]
                     contents.append({"role": "model", "parts": parts})
-            elif m.role == "tool":  # all responses of one model turn go into ONE user message
+            elif message.role == "tool":  # all responses of one model turn go into ONE user message
                 parts = []
-                for r in m.tool_responses:
-                    fr: dict[str, Any] = {"name": r.name, "response": r.response}
-                    if r.call_id in api_ids:
-                        fr["id"] = r.call_id
-                    parts.append({"functionResponse": fr})
-                if m.text:
-                    parts.append({"text": m.text})
+                for response in message.tool_responses:
+                    function_response: dict[str, Any] = {"name": response.name, "response": response.response}
+                    if response.call_id in api_ids:
+                        function_response["id"] = response.call_id
+                    parts.append({"functionResponse": function_response})
+                if message.text:
+                    parts.append({"text": message.text})
                 contents.append({"role": "user", "parts": parts})
         return ({"parts": [{"text": system}]} if system else None), contents
 
@@ -105,21 +107,21 @@ class GeminiProvider:
             body["system_instruction"] = system
         if tools:
             body["tools"] = [{"functionDeclarations": [
-                {"name": t.name, "description": t.description, "parameters": to_gemini_schema(t.parameters)}
-                for t in tools]}]
-            cfg: dict[str, Any] = {"mode": tool_choice.mode.upper()}
+                {"name": tool.name, "description": tool.description, "parameters": to_gemini_schema(tool.parameters)}
+                for tool in tools]}]
+            calling_config: dict[str, Any] = {"mode": tool_choice.mode.upper()}
             if tool_choice.mode == "any" and tool_choice.allowed:
-                cfg["allowedFunctionNames"] = tool_choice.allowed
-            body["toolConfig"] = {"functionCallingConfig": cfg}
+                calling_config["allowedFunctionNames"] = tool_choice.allowed
+            body["toolConfig"] = {"functionCallingConfig": calling_config}
         return body
 
     # ------------------------------------------------------------- response
     def generate(self, messages: list[Message], tools: list[ToolSpec], tool_choice: ToolChoice,
                  max_output_tokens: int = 2048) -> LLMTurn:
         body = self.build_body(messages, tools, tool_choice, max_output_tokens)
-        url = f"{self._base}/v1beta/models/{self.model}:generateContent"
+        url = f"{self._base_url}/v1beta/models/{self.model}:generateContent"
         try:
-            r = self._client.post(url, json=body, headers={"x-goog-api-key": self._key})
+            response = self._client.post(url, json=body, headers={"x-goog-api-key": self._api_key})
         except httpx.TransportError as e:  # includes timeouts
             # a failure while CONNECTING never reached the model (no tokens); a read timeout/error may have
             # happened after the model started working, so its usage is unknown
@@ -127,34 +129,34 @@ class GeminiProvider:
             raise LLMError(f"network error: {type(e).__name__}", transient=True, usage_unknown=not connect_phase) from e
         # HTTP error statuses: the provider rejected the call. Google documents that failed 400/500 requests
         # are not billed for tokens (they still count toward quota); other statuses are assumed the same.
-        if r.status_code == 429 or r.status_code >= 500:
-            raise LLMError(f"HTTP {r.status_code}", transient=True)
-        if r.status_code >= 400:
-            raise LLMError(f"HTTP {r.status_code}: {self._error_message(r)}")
+        if response.status_code == 429 or response.status_code >= 500:
+            raise LLMError(f"HTTP {response.status_code}", transient=True)
+        if response.status_code >= 400:
+            raise LLMError(f"HTTP {response.status_code}: {self._error_message(response)}")
         try:
-            payload = r.json()
+            payload = response.json()
         except ValueError as e:  # a proxy or gateway can answer 200 with a non-JSON body
             raise LLMError("response body is not JSON", transient=True, usage_unknown=True) from e
         return self.parse(payload)
 
     @staticmethod
-    def _error_message(r: httpx.Response) -> str:
+    def _error_message(response: httpx.Response) -> str:
         """Best-effort text of an HTTP error body; any unexpected shape yields an empty string, never an exception."""
         try:
-            err = r.json().get("error")
-            msg = err.get("message") if isinstance(err, dict) else None
-            return msg[:200] if isinstance(msg, str) else ""
+            error = response.json().get("error")
+            message = error.get("message") if isinstance(error, dict) else None
+            return message[:200] if isinstance(message, str) else ""
         except (ValueError, AttributeError):
             return ""
 
     @staticmethod
     def _usage(payload: Any) -> Optional[dict]:
-        u = payload.get("usageMetadata") if isinstance(payload, dict) else None
-        if not isinstance(u, dict) or not u:
+        usage = payload.get("usageMetadata") if isinstance(payload, dict) else None
+        if not isinstance(usage, dict) or not usage:
             return None
-        return {"prompt_tokens": u.get("promptTokenCount"),
-                "output_tokens": (u.get("candidatesTokenCount") or 0) + (u.get("thoughtsTokenCount") or 0),
-                "total_tokens": u.get("totalTokenCount")}
+        return {"prompt_tokens": usage.get("promptTokenCount"),
+                "output_tokens": (usage.get("candidatesTokenCount") or 0) + (usage.get("thoughtsTokenCount") or 0),
+                "total_tokens": usage.get("totalTokenCount")}
 
     @classmethod
     def parse(cls, payload: Any) -> LLMTurn:
@@ -173,31 +175,33 @@ class GeminiProvider:
     def _parse(payload: Any) -> LLMTurn:
         if not isinstance(payload, dict):
             raise LLMError("unexpected response shape (not an object)", transient=True)
-        cands = payload.get("candidates") or []
-        if not isinstance(cands, list) or not cands or not isinstance(cands[0], dict):
-            pf = payload.get("promptFeedback")
-            block = pf.get("blockReason") if isinstance(pf, dict) else None
+        candidates = payload.get("candidates") or []
+        if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):
+            prompt_feedback = payload.get("promptFeedback")
+            block = prompt_feedback.get("blockReason") if isinstance(prompt_feedback, dict) else None
             raise LLMError(f"no usable candidates (blockReason={block})", transient=block is None)
-        cand = cands[0]
-        content = cand.get("content") if isinstance(cand.get("content"), dict) else {}
+        candidate = candidates[0]
+        content = candidate.get("content") if isinstance(candidate.get("content"), dict) else {}
         raw_parts = content.get("parts") if isinstance(content.get("parts"), list) else []
-        parts = [p for p in raw_parts if isinstance(p, dict)]
+        parts = [part for part in raw_parts if isinstance(part, dict)]
         calls = []
-        for i, p in enumerate(x for x in parts if "functionCall" in x):
-            fc = p["functionCall"]
-            if not isinstance(fc, dict) or not isinstance(fc.get("name"), str) or not fc["name"]:
+        for i, part in enumerate(x for x in parts if "functionCall" in x):
+            function_call = part["functionCall"]
+            if (not isinstance(function_call, dict) or not isinstance(function_call.get("name"), str)
+                    or not function_call["name"]):
                 raise LLMError("malformed functionCall (missing name)", transient=True)
-            args = {} if fc.get("args") is None else fc["args"]
+            args = {} if function_call.get("args") is None else function_call["args"]
             if not isinstance(args, dict):
                 raise LLMError("malformed functionCall (args are not an object)", transient=True)
-            calls.append(ToolCall(id=fc.get("id") or f"call_{i}", name=fc["name"], args=args))
-        text = "".join(p.get("text", "") for p in parts if isinstance(p.get("text"), str) and not p.get("thought")).strip()
+            calls.append(ToolCall(id=function_call.get("id") or f"call_{i}", name=function_call["name"], args=args))
+        text = "".join(part.get("text", "") for part in parts
+                       if isinstance(part.get("text"), str) and not part.get("thought")).strip()
         if not calls and not text:
             # MALFORMED_FUNCTION_CALL is sampling noise on a complex schema: worth one retry
-            reason = cand.get("finishReason")
-            raise LLMError(f"empty response (finishReason={reason}; {str(cand.get('finishMessage', ''))[:160]})",
+            reason = candidate.get("finishReason")
+            raise LLMError(f"empty response (finishReason={reason}; {str(candidate.get('finishMessage', ''))[:160]})",
                            transient=reason in (None, "STOP", "OTHER", "MALFORMED_FUNCTION_CALL"))
-        if not calls and cand.get("finishReason") == "MAX_TOKENS":
+        if not calls and candidate.get("finishReason") == "MAX_TOKENS":
             raise LLMError("response truncated (MAX_TOKENS)")
         raw = {"role": "model", "parts": parts}
         return LLMTurn(text=text, tool_calls=calls, raw=raw)
