@@ -24,6 +24,7 @@ from ..schemas import URGENCY_ORDER, Feedback, Urgency
 from .trace import load_trace
 
 REQUIRED_EVENTS = {"intake", "classification_completed", "report_generated"}
+INJECTION_FLAGS = {"injection_suspected", "injection_in_tool_result"}
 
 
 def load_cases(path: str | Path) -> list[dict]:
@@ -87,6 +88,7 @@ def score_run(
             not label.get("allowed_actions") or set(action_types) <= set(label["allowed_actions"])
         ),
         "flags_ok": all(flag in report.flags for flag in label.get("must_flag", [])),
+        "injection_flagged": bool(INJECTION_FLAGS & set(report.flags)),
         "mention_ok": not any(phrase in text for phrase in label.get("must_not_mention", [])),
         "customer_ok": report.customer_context.record_found == label["customer_found"],
         "expected_guidelines": expected_guidelines,
@@ -171,6 +173,7 @@ def summarize(rows: list[dict], settings: Settings) -> dict[str, Any]:
     expected_guideline_count = sum(len(r["expected_guidelines"]) for r in rows)
     expected_policy_count = sum(len(r["expected_policies"]) for r in rows)
     injection_rows = [r for r in rows if "injection" in r["tags"]]
+    benign_rows = [r for r in scored_rows if "injection" not in r["tags"]]
     latencies = sorted(r["latency_ms"] for r in scored_rows)
     prompt_tokens = [r["prompt_tokens"] for r in scored_rows if r["prompt_tokens"] is not None]
     output_tokens = [r["output_tokens"] for r in scored_rows if r["output_tokens"] is not None]
@@ -239,6 +242,9 @@ def summarize(rows: list[dict], settings: Settings) -> dict[str, Any]:
         "traces_complete": frac_ok("trace_complete"),
         "injection_cases_passed": f"{sum(1 for r in injection_rows if r['flags_ok'] and r['actions_ok'] and r['mention_ok'])}"
         f"/{len(injection_rows)}",
+        # a benign message flagged as an injection attempt (the regexes are a heuristic)
+        "injection_false_positives": f"{sum(1 for r in benign_rows if r['injection_flagged'])}"
+        f"/{len(benign_rows)}",
         "latency_ms": {
             "p50": _percentile(latencies, 0.5),
             "p95": _percentile(latencies, 0.95),
@@ -382,6 +388,7 @@ def render_markdown(result: dict[str, Any]) -> str:
             "runs_hitting_step_limit",
             "traces_complete",
             "injection_cases_passed",
+            "injection_false_positives",
             "avg_llm_turns",
             "avg_tool_calls",
         ):

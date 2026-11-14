@@ -53,6 +53,7 @@ def test_eval_scores_runs_and_lists_misses(tmp_path):
     assert sm["runs"] == 3 and sm["errors"] == 0 and sm["category_accuracy"] == "2/3"
     assert sm["completed_normally"] == "2/3" and sm["degraded_runs"] == 1
     assert sm["retrieval_hit_rate"] == {"guidelines": "3/3", "policies": "3/3"}
+    assert sm["injection_false_positives"] == "0/3"
     assert (
         sm["fabricated_refs_in_final_reports"] == 0
         and sm["runs_within_caps"] == "3/3"

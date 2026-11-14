@@ -135,7 +135,9 @@ class ToolExecutor:
         else:
             self.failed_sources.pop(tool_result.source, None)
             hits = (
-                find_injection_patterns(json.dumps(tool_result.data, default=str))
+                find_injection_patterns(
+                    json.dumps(tool_result.data, ensure_ascii=False, default=str)
+                )
                 if tool_result.data
                 else []
             )
