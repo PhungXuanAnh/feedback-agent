@@ -232,10 +232,10 @@ One line per step in `traces/<trace_id>.jsonl`; no model reasoning is stored. Us
 
   | `max_llm_turns` | normal completion | avg LLM turns | latency p50 / p95 |
   |---|---|---|---|
-  | 2 | 42/42 | 2.00 | 9.8 s / 13.9 s |
-  | 3 | 42/42 | 2.12 | 9.5 s / 15.9 s |
-  | 4 | 42/42 | 2.05 | 9.6 s / 16.5 s |
-  | 6 | 42/42 | 2.07 | 10.1 s / 16.2 s |
+  | 2 | 42/42 | 2.00 | 9.7 s / 15.3 s |
+  | 3 | 42/42 | 2.07 | 10.4 s / 18.3 s |
+  | 4 | 42/42 | 2.02 | 10.5 s / 14.9 s |
+  | 6 | 42/42 | 2.10 | 11.0 s / 24.6 s |
 
   A normal run is 2 turns (three lookups requested in one LLM turn, then `submit_report`) and 2-6 behaved the same here. **Default 4** = the typical 2 + one repair + one spare; the cap is only a ceiling. 14 cases cannot show when a higher cap would matter.
 - **Live findings:** Gemini 3 thinking tokens count against `maxOutputTokens`: at 2048 the long `submit_report` call broke on 2 of 14 cases. `MAX_OUTPUT_TOKENS=8192`, `LLM_THINKING_LEVEL=low` and one retry fixed it (14/14 normal; median latency about 13 s to 5 s, measured on 2026-10-04; the 2026-11-14 sweep above ran at about 10 s with the same settings, so latency also moves with the provider's load). Saved live outputs use that configuration and still pass the current validator.
