@@ -83,7 +83,12 @@ def cmd_demo(args, settings: Settings) -> int:
     from ..ops.trace import load_trace, render_trace
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    sample = next(candidate for candidate in load_manifest() if candidate["name"] == args.sample)
+    for candidate in load_manifest():
+        if candidate["name"] == args.sample:
+            sample = candidate
+            break
+    else:
+        raise ValueError(f"unknown sample: {args.sample}")
     with tempfile.TemporaryDirectory() as temp_dir:
         settings.database_path, settings.trace_dir = f"{temp_dir}/demo.db", f"{temp_dir}/traces"
         from ..bootstrap import build_pipeline

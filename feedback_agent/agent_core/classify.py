@@ -107,9 +107,11 @@ def classify_by_keywords(text: str) -> Classification:
 
     The first matching keyword rule wins (security first): "charged twice" -> billing_issue.
     """
-    category = next(
-        (candidate for candidate, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear
-    )
+    category = Category.unclear
+    for candidate, rx in _KEYWORDS:
+        if re.search(rx, text, re.I):
+            category = candidate
+            break
     sentiment = (
         Sentiment.abusive
         if _ABUSIVE.search(text)
@@ -143,10 +145,11 @@ def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
         [CLASSIFY_TOOL],
         ToolChoice("required", ["classify_feedback"]),
     )
-    call = next(
-        (tool_call for tool_call in llm_turn.tool_calls if tool_call.name == "classify_feedback"),
-        None,
-    )
+    call = None
+    for tool_call in llm_turn.tool_calls:
+        if tool_call.name == "classify_feedback":
+            call = tool_call
+            break
     if call is None:
         raise LLMUnavailable("classify_feedback was not called")
     try:

@@ -200,20 +200,17 @@ class KnowledgeBase:
 
     def guideline_for_category(self, category: str) -> Optional[dict]:
         """The CS guideline of a category (one per category), or None."""
-        return next(
-            (guideline for guideline in self.guidelines if guideline["category"] == category), None
-        )
+        for guideline in self.guidelines:
+            if guideline["category"] == category:
+                return guideline
+        return None
 
     def guideline_by_id(self, guideline_id: str) -> Optional[dict]:
         """Guideline with this id, e.g. "GL-TRIAGE" (added by the pipeline as system evidence)."""
-        return next(
-            (
-                guideline
-                for guideline in self.guidelines
-                if guideline["guideline_id"] == guideline_id
-            ),
-            None,
-        )
+        for guideline in self.guidelines:
+            if guideline["guideline_id"] == guideline_id:
+                return guideline
+        return None
 
     def active_policies(self, as_of: date) -> list[dict]:
         """In force on `as_of`: effective_date <= as_of < expires_date, and not superseded by a policy
