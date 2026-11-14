@@ -3,8 +3,8 @@ import json
 import httpx
 import pytest
 
+from feedback_agent.agent_core.tools import tool_specs
 from feedback_agent.config import Settings
-from feedback_agent.core.tools import tool_specs
 from feedback_agent.llm import ConfigError, GeminiProvider, ScriptedProvider, get_provider
 from feedback_agent.llm.base import LLMError, Message, ToolChoice, ToolResponse, ToolSpec
 from feedback_agent.llm.gemini import to_gemini_schema

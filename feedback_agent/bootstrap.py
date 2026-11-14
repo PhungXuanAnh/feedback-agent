@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
+from .agent_core.pipeline import FeedbackPipeline
+from .agent_core.tools import FaultInjector, KnowledgeBase
 from .config import ROOT, Settings
-from .core.pipeline import FeedbackPipeline
-from .core.tools import FaultInjector, KnowledgeBase
 from .database import Database
 from .llm import get_provider
 

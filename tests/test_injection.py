@@ -1,7 +1,7 @@
 """Prompt-injection defences: flag early, lock the lookup scope, escape tool data, validate the output."""
 
 from conftest import C, G, P, calls, classify_step, fb, submit
-from feedback_agent.core import guard
+from feedback_agent.agent_core import guard
 
 KESTREL = "platform@kestrel-logistics.example"
 

@@ -9,10 +9,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from ..agent_core.hitl import ReviewError, ReviewRequest, ReviewService, report_summary
+from ..agent_core.pipeline import FeedbackPipeline
 from ..bootstrap import build_pipeline, open_database
 from ..config import Settings
-from ..core.hitl import ReviewError, ReviewRequest, ReviewService, report_summary
-from ..core.pipeline import FeedbackPipeline
 from ..database import StorageError
 from ..llm import ConfigError
 from ..ops.trace import load_trace_by_id

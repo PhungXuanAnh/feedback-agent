@@ -8,9 +8,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+from ..agent_core.hitl import ReviewError, ReviewRequest, ReviewService, report_summary
 from ..bootstrap import open_database
 from ..config import Settings
-from ..core.hitl import ReviewError, ReviewRequest, ReviewService, report_summary
 
 
 def cmd_reports(args, settings: Settings) -> int:

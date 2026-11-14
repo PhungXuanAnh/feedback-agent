@@ -36,7 +36,7 @@
 
   <!-- Pipeline frame (the orchestrator) -->
   <rect x="20" y="66" width="1220" height="882" rx="10" fill="none" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="8 4"/>
-  <text x="36" y="90" class="title" fill="#374151">Pipeline (the orchestrator) · owns state, caps and trace_id · code decides the control flow <tspan class="file" dx="6">core/pipeline.py</tspan></text>
+  <text x="36" y="90" class="title" fill="#374151">Pipeline (the orchestrator) · owns state, caps and trace_id · code decides the control flow <tspan class="file" dx="6">agent_core/pipeline.py</tspan></text>
 
   <!-- 1 Intake -->
   <rect x="50" y="110" width="760" height="50" rx="8" class="code"/>
@@ -48,21 +48,21 @@
   <!-- 2 Injection guard -->
   <rect x="50" y="180" width="760" height="50" rx="8" class="code"/>
   <text x="66" y="201" class="title">2 · Injection guard (code)</text>
-  <text x="798" y="201" class="file" text-anchor="end">core/guard.py</text>
+  <text x="798" y="201" class="file" text-anchor="end">agent_core/guard.py</text>
   <text x="66" y="219" class="body">regex flags injection_suspected (never blocks) · text wrapped in escaped &lt;customer_feedback&gt; tags</text>
   <line x1="430" y1="230" x2="430" y2="250" class="flow"/>
 
   <!-- 3 Classify -->
   <rect x="50" y="250" width="760" height="65" rx="8" class="llm"/>
   <text x="66" y="271" class="title">3 · Classify (1 schema-forced LLM call + code)</text>
-  <text x="798" y="271" class="file" text-anchor="end">core/classify.py</text>
+  <text x="798" y="271" class="file" text-anchor="end">agent_core/classify.py</text>
   <text x="66" y="289" class="body">LLM: category + up to 2 alternatives · sentiment · urgency · confidence</text>
   <text x="66" y="306" class="body">code: urgency floor rules · low confidence or "unclear" → needs_human_triage</text>
 
   <!-- 4-5 Agent loop container -->
   <rect x="40" y="340" width="780" height="360" rx="10" fill="#F7FBF8" stroke="#3C8D50" stroke-width="1.5"/>
   <line x1="430" y1="315" x2="430" y2="393" class="flow"/>
-  <text x="56" y="362" class="title">4–5 · Agent loop <tspan class="file" dx="6">core/agent.py</tspan></text>
+  <text x="56" y="362" class="title">4–5 · Agent loop <tspan class="file" dx="6">agent_core/agent.py</tspan></text>
   <text x="56" y="380" class="body">LLM picks tools + queries; code enforces rules</text>
   <text x="560" y="362" class="small" fill="#374151">read-only tools: the agent only proposes,</text>
   <text x="560" y="378" class="small" fill="#374151">it cannot refund, close a ticket or email</text>
@@ -80,15 +80,15 @@
 
   <!-- Evidence gate -->
   <rect x="60" y="478" width="360" height="52" rx="8" class="code"/>
-  <text x="76" y="498" class="title">Evidence gate (code)</text>
-  <text x="408" y="498" class="file" text-anchor="end">core/evidence.py</text>
+  <text x="76" y="498" class="title">Evidence gate</text>
+  <text x="408" y="498" class="file" text-anchor="end">agent_core/evidence.py</text>
   <text x="76" y="517" class="body">all 3 sources consulted? not_found counts, error does not</text>
   <line x1="240" y1="530" x2="240" y2="550" class="flow"/>
 
   <!-- Grounding validator -->
   <rect x="60" y="550" width="360" height="80" rx="8" class="code"/>
-  <text x="76" y="570" class="title">Grounding validator (code)</text>
-  <text x="408" y="570" class="file" text-anchor="end">core/validator.py</text>
+  <text x="76" y="570" class="title">Grounding validator</text>
+  <text x="408" y="570" class="file" text-anchor="end">agent_core/validator.py</text>
   <text x="76" y="588" class="body">cited ids ∈ this run's tool results · each action's basis</text>
   <text x="76" y="605" class="body">allows it · issue_refund: invoice, ≤ cap, window, tier</text>
   <text x="76" y="622" class="note">shared: also checks the template report and officer overrides</text>
@@ -111,8 +111,8 @@
 
   <!-- Tool executor -->
   <rect x="440" y="478" width="360" height="80" rx="8" class="code"/>
-  <text x="456" y="498" class="title">Tool executor (code)</text>
-  <text x="788" y="498" class="file" text-anchor="end">core/tool_executor.py</text>
+  <text x="456" y="498" class="title">Tool executor</text>
+  <text x="788" y="498" class="file" text-anchor="end">agent_core/tool_executor.py</text>
   <text x="456" y="516" class="body">validates args · customer scope locked to metadata</text>
   <text x="456" y="533" class="body">cache · budget ≤ 6 calls · 1 retry</text>
   <text x="456" y="550" class="note">shared: also runs the degraded path's lookups</text>
@@ -127,7 +127,7 @@
   <text x="620" y="593" class="mono" text-anchor="middle">lookup_customer</text>
   <rect x="684" y="572" width="116" height="34" rx="6" class="neutral"/>
   <text x="742" y="593" class="mono" text-anchor="middle">search_policies</text>
-  <text x="800" y="619" class="file" text-anchor="end">core/tools.py</text>
+  <text x="800" y="619" class="file" text-anchor="end">agent_core/tools.py</text>
 
   <!-- results back to the LLM -->
   <path d="M800,500 H810 V418 H542" class="back"/>
@@ -142,13 +142,13 @@
   <!-- Report -->
   <rect x="50" y="722" width="760" height="50" rx="8" class="code"/>
   <text x="66" y="743" class="title">Report (code fills the rest)</text>
-  <text x="798" y="743" class="file" text-anchor="end">core/report.py</text>
+  <text x="798" y="743" class="file" text-anchor="end">agent_core/report.py</text>
   <text x="66" y="761" class="body">category / urgency / alternatives from classify · flags the LLM cannot remove · confidence = formula, not the LLM</text>
   <line x1="430" y1="772" x2="430" y2="792" class="flow"/>
 
   <!-- 6 Human review -->
   <rect x="50" y="792" width="760" height="96" rx="8" class="human"/>
-  <text x="66" y="814" class="title">6 · Human review queue <tspan class="file" dx="6">core/hitl.py</tspan></text>
+  <text x="66" y="814" class="title">6 · Human review queue <tspan class="file" dx="6">agent_core/hitl.py</tspan></text>
   <text x="66" y="834" class="body">a CS officer decides; actions run only after approval</text>
   <text x="66" y="852" class="body">audit in SQLite: who, when, before / after</text>
   <text x="66" y="870" class="body">same decision again = idempotent · conflicting = 409</text>
@@ -189,7 +189,7 @@
   <line x1="820" y1="432" x2="848" y2="432" class="failflow"/>
   <rect x="850" y="395" width="370" height="80" rx="8" class="fail"/>
   <text x="864" y="414" class="body" font-weight="700">LLM error / timeout → retry once →</text>
-  <text x="1208" y="414" class="file" text-anchor="end">core/pipeline.py</text>
+  <text x="1208" y="465" class="file" text-anchor="end">agent_core/pipeline.py</text>
   <text x="864" y="431" class="body">degraded path (no LLM): keep successful results,</text>
   <text x="864" y="448" class="body">call only the missing tools in a fixed order,</text>
   <text x="864" y="465" class="body">template report, flag degraded</text>

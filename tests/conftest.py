@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from feedback_agent.core.tools import KnowledgeBase, ToolContext
+from feedback_agent.agent_core.tools import KnowledgeBase, ToolContext
 from feedback_agent.database import Database
 
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -41,9 +41,9 @@ def make_ctx(database, kb):
 from datetime import datetime, timezone  # noqa: E402
 
 from feedback_agent import schemas  # noqa: E402
+from feedback_agent.agent_core import hitl  # noqa: E402
+from feedback_agent.agent_core.pipeline import FeedbackPipeline  # noqa: E402
 from feedback_agent.config import Settings  # noqa: E402
-from feedback_agent.core import hitl  # noqa: E402
-from feedback_agent.core.pipeline import FeedbackPipeline  # noqa: E402
 from feedback_agent.interfaces import apiguard  # noqa: E402
 from feedback_agent.llm import ScriptedProvider  # noqa: E402
 from feedback_agent.schemas import Feedback  # noqa: E402

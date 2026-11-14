@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
 from conftest import C, G, P, calls, classify_step, submit
+from feedback_agent.agent_core.pipeline import FeedbackPipeline
 from feedback_agent.config import Settings
-from feedback_agent.core.pipeline import FeedbackPipeline
 from feedback_agent.interfaces.api import create_app
 from feedback_agent.llm import ScriptedProvider
 from feedback_agent.llm.base import LLMTurn, ToolCall
