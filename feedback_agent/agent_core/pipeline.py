@@ -1,5 +1,6 @@
-"""The fixed six-step pipeline: intake -> guard -> classify -> agent loop -> report+validator -> HITL queue.
-Only classify, the agent loop and submit_report use the LLM; everything else is plain code."""
+"""Steps 2-6 of the flow: guard -> classify -> agent loop -> report + validator -> review queue.
+Step 1, intake, is the API or CLI that builds the Feedback. Only classify, the agent loop and
+submit_report use the LLM; everything else is plain code."""
 
 from __future__ import annotations
 
@@ -67,10 +68,11 @@ class FeedbackPipeline:
         self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
-        """Run one feedback through the six steps and return the saved report.
+        """Run steps 2-6 for one feedback and return the saved report.
 
-        The API or CLI has already validated the input (HTTP 422 otherwise).
-        1. Intake: give the feedback an id and open its trace.
+        1. Intake happens before this call: the API or CLI accepts the free text with its
+           metadata (customer email or id, timestamp, channel) and validates it into a Feedback
+           (HTTP 422 otherwise). This method first gives it an id and opens its trace.
         2. Injection guard: regexes flag suspicious text; nothing is blocked.
         3. Classify: one schema-forced LLM call plus urgency floor rules; keyword rules when the
            LLM is unavailable.
@@ -83,7 +85,7 @@ class FeedbackPipeline:
 
         StorageError propagates, so a caller never reports "queued" when saving failed.
         """
-        # 1. Intake
+        # 1. Intake was done by the API or CLI; open this run's trace
         tracer = self._start_trace(feedback)
         # 2. Injection guard
         flags = self._scan_for_injection(feedback, tracer)
@@ -103,7 +105,7 @@ class FeedbackPipeline:
         return report
 
     def _start_trace(self, feedback: Feedback) -> Tracer:
-        """Step 1, intake: give the feedback an id and open its trace."""
+        """Give the feedback taken in by the API or CLI an id and open its trace."""
         tracer = Tracer(new_trace_id(), self.settings)
         feedback.feedback_id = feedback.feedback_id or "fb_" + uuid.uuid4().hex[:10]
         tracer.emit(
