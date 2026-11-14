@@ -17,7 +17,10 @@ _PERSISTENT = ("source_unavailable", "source_failure")  # a source problem, not 
 
 
 @dataclass
-class RunState:
+class CaseFile:
+    """Everything one feedback's processing reads and adds to: the feedback, its classification,
+    the tool context, the evidence gathered, the trace and the flags."""
+
     feedback: Feedback
     classification: Classification
     tool_context: ToolContext
@@ -29,8 +32,8 @@ class RunState:
 class ToolExecutor:
     """Runs tool calls with caching, budgets, one retry for transient errors and tracing."""
 
-    def __init__(self, run_state: RunState, max_tool_calls: int, max_forced_lookups: int):
-        self.run_state = run_state
+    def __init__(self, case_file: CaseFile, max_tool_calls: int, max_forced_lookups: int):
+        self.case_file = case_file
         self.max_tool_calls, self.max_forced_lookups = max_tool_calls, max_forced_lookups
         self.llm_tool_calls = self.forced_calls = self.cache_hits = self.degraded_calls = 0
         self.failed_sources: dict[str, str] = (
@@ -56,7 +59,7 @@ class ToolExecutor:
         retried once if retryable -> _record_result. origin: llm, forced_by_system (last-turn lookups)
         or degraded (no-LLM path).
         """
-        tracer, cache_key = self.run_state.tracer, self._cache_key(name, args)
+        tracer, cache_key = self.case_file.tracer, self._cache_key(name, args)
         if cache_key in self._cache:  # same call twice in a run: no new work, no budget
             self.cache_hits += 1
             tracer.emit(Event.tool_call, tool=name, args=args, origin=origin, cache_hit=True)
@@ -97,7 +100,7 @@ class ToolExecutor:
                 attempt=attempt,
                 cache_hit=False,
             )
-            tool_result = run_tool(self.run_state.tool_context, name, args)
+            tool_result = run_tool(self.case_file.tool_context, name, args)
             if tool_result.status is ToolStatus.error:
                 tracer.emit(
                     Event.tool_error,
@@ -127,8 +130,8 @@ class ToolExecutor:
         Successes and LLM mistakes (out_of_scope, invalid_arguments) are cached; source errors are
         not, so a later call can still succeed.
         """
-        self.run_state.evidence.record(tool_result)
-        self.run_state.flags.update(tool_result.flags)
+        self.case_file.evidence.record(tool_result)
+        self.case_file.flags.update(tool_result.flags)
         if tool_result.status is ToolStatus.error:
             if tool_result.error in _PERSISTENT:
                 self.failed_sources[tool_result.source] = tool_result.error
@@ -142,8 +145,8 @@ class ToolExecutor:
                 else []
             )
             if hits:
-                self.run_state.flags.add("injection_in_tool_result")
-                self.run_state.tracer.emit(
+                self.case_file.flags.add("injection_in_tool_result")
+                self.case_file.tracer.emit(
                     Event.injection_guard, source=f"tool:{name}", patterns=hits
                 )
         if tool_result.status is not ToolStatus.error or tool_result.error in (

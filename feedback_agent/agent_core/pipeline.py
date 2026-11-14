@@ -20,7 +20,7 @@ from .evidence import SYSTEM_GUIDELINE, Evidence
 from .injection_scan import find_injection_patterns
 from .prompts import AGENT_PROMPT, CLASSIFY_PROMPT
 from .report import build_report
-from .tool_executor import RunState, ToolExecutor
+from .tool_executor import CaseFile, ToolExecutor
 from .tools import FaultInjector, KnowledgeBase, ToolContext
 
 PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}
@@ -93,15 +93,15 @@ class FeedbackPipeline:
         llm_caller = LLMCaller(self.provider, self.settings, tracer)
         classification, llm_ok = self._classify(llm_caller, feedback, tracer)
         # 4. Agent loop, and the validator half of step 5 (or the degraded path)
-        run_state = self._new_run_state(feedback, classification, flags, tracer)
+        case_file = self._open_case_file(feedback, classification, flags, tracer)
         tool_executor = ToolExecutor(
-            run_state, self.settings.max_tool_calls, self.settings.max_forced_lookups
+            case_file, self.settings.max_tool_calls, self.settings.max_forced_lookups
         )
-        outcome = self._draft_report(run_state, tool_executor, llm_caller, llm_ok)
+        outcome = self._draft_report(case_file, tool_executor, llm_caller, llm_ok)
         # 5. Report
-        report = self._build_report(run_state, tool_executor, outcome)
+        report = self._build_report(case_file, tool_executor, outcome)
         # 6. Review queue
-        self._save(run_state, report)
+        self._save(case_file, report)
         return report
 
     def _start_trace(self, feedback: Feedback) -> Tracer:
@@ -155,10 +155,10 @@ class FeedbackPipeline:
         tracer.emit(Event.classification_completed, **classification.model_dump(mode="json"))
         return classification, llm_ok
 
-    def _new_run_state(
+    def _open_case_file(
         self, feedback: Feedback, classification: Classification, flags: set[str], tracer: Tracer
-    ) -> RunState:
-        """What the agent loop and the degraded path share: tool context, evidence, flags."""
+    ) -> CaseFile:
+        """Open the case file that the agent loop, the degraded path and the report share."""
         tool_context = ToolContext(
             self.database,
             self.knowledge_base,
@@ -178,27 +178,27 @@ class FeedbackPipeline:
                 guideline_id=SYSTEM_GUIDELINE,
                 allowed_actions=triage_guideline["allowed_actions"],
             )
-        return RunState(feedback, classification, tool_context, evidence, tracer, flags)
+        return CaseFile(feedback, classification, tool_context, evidence, tracer, flags)
 
     def _draft_report(
         self,
-        run_state: RunState,
+        case_file: CaseFile,
         tool_executor: ToolExecutor,
         llm_caller: LLMCaller,
         llm_ok: bool,
     ) -> DraftOutcome:
         """Steps 4-5: the agent loop drafts a validated report; if not, the degraded path runs."""
         if llm_ok:
-            agent_result = AgentLoop(run_state, tool_executor, llm_caller, self.settings).run()
+            agent_result = AgentLoop(case_file, tool_executor, llm_caller, self.settings).run()
             draft, llm_turns = agent_result.draft, agent_result.llm_turns
             failed_sources = agent_result.failed_sources
             template_reason = _TEMPLATE_REASONS.get(agent_result.outcome, "")
             if agent_result.outcome in _OUTCOME_FLAGS:
-                run_state.flags.add(_OUTCOME_FLAGS[agent_result.outcome])
+                case_file.flags.add(_OUTCOME_FLAGS[agent_result.outcome])
         else:
             draft, llm_turns, failed_sources = None, 0, {}
             template_reason = _TEMPLATE_REASONS["llm_unavailable"]
-            run_state.flags.add("llm_unavailable")
+            case_file.flags.add("llm_unavailable")
         if draft is not None:
             return DraftOutcome(
                 draft, self.provider.name, template_reason, failed_sources, llm_turns
@@ -206,21 +206,21 @@ class FeedbackPipeline:
         # incomplete_context already knows which source is down: no point asking again
         if not failed_sources:
             failed_sources = self._run_degraded_lookups(
-                run_state, tool_executor, run_state.tracer, template_reason
+                case_file, tool_executor, case_file.tracer, template_reason
             )
         return DraftOutcome(None, "degraded_template", template_reason, failed_sources, llm_turns)
 
     def _build_report(
-        self, run_state: RunState, tool_executor: ToolExecutor, outcome: DraftOutcome
+        self, case_file: CaseFile, tool_executor: ToolExecutor, outcome: DraftOutcome
     ) -> Report:
         """Step 5, report: code fills classification, flags and confidence around the draft."""
-        tracer = run_state.tracer
+        tracer = case_file.tracer
         counters = {"llm_turns": outcome.llm_turns, **tool_executor.counters(), **tracer.totals()}
         report = build_report(
-            feedback=run_state.feedback,
-            classification=run_state.classification,
-            evidence=run_state.evidence,
-            flags=run_state.flags,
+            feedback=case_file.feedback,
+            classification=case_file.classification,
+            evidence=case_file.evidence,
+            flags=case_file.flags,
             draft=outcome.draft,
             generated_by=outcome.generated_by,
             provider=self.provider.name,
@@ -243,39 +243,39 @@ class FeedbackPipeline:
         )
         return report
 
-    def _save(self, run_state: RunState, report: Report) -> None:
+    def _save(self, case_file: CaseFile, report: Report) -> None:
         """Step 6, review queue: save the feedback and the report as pending_review."""
         self.database.save_feedback(
-            run_state.feedback,
-            "injection_suspected" in run_state.flags,
-            run_state.classification,
+            case_file.feedback,
+            "injection_suspected" in case_file.flags,
+            case_file.classification,
             CLASSIFY_PROMPT,
-            run_state.tracer.trace_id,
+            case_file.tracer.trace_id,
         )
         self.database.save_report(
-            report, run_state.evidence.to_dict()
+            report, case_file.evidence.to_dict()
         )  # StorageError propagates: never claim "queued"
 
     @staticmethod
     def _run_degraded_lookups(
-        run_state: RunState, tool_executor: ToolExecutor, tracer: Tracer, reason: str
+        case_file: CaseFile, tool_executor: ToolExecutor, tracer: Tracer, reason: str
     ) -> dict:
         """No-LLM path: keep everything that already succeeded, call only the missing sources.
 
         Returns {source: error} for the sources still missing afterwards.
         """
-        evidence = run_state.evidence
+        evidence = case_file.evidence
         plan = {
             "guidelines": (
                 "get_cs_guidelines",
-                {"category": run_state.classification.category.value},
+                {"category": case_file.classification.category.value},
             ),
-            "customer": ("lookup_customer", {"email": run_state.feedback.customer_email}),
+            "customer": ("lookup_customer", {"email": case_file.feedback.customer_email}),
             "policies": (
                 "search_policies",
                 {
-                    "query": policy_query(run_state.classification, run_state.feedback),
-                    "category": run_state.classification.category.value,
+                    "query": policy_query(case_file.classification, case_file.feedback),
+                    "category": case_file.classification.category.value,
                 },
             ),
         }

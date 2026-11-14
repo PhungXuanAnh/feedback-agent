@@ -16,7 +16,7 @@ from ..ops.trace import Event
 from ..schemas import Classification, Feedback, ReportDraft
 from . import guard
 from .prompts import AGENT_PROMPT, load_prompt
-from .tool_executor import RunState, ToolExecutor
+from .tool_executor import CaseFile, ToolExecutor
 from .tools import ToolResult, tool_specs
 from .validator import validate_draft
 
@@ -92,18 +92,18 @@ class AgentLoop:
 
     def __init__(
         self,
-        run_state: RunState,
+        case_file: CaseFile,
         tool_executor: ToolExecutor,
         llm_caller: LLMCaller,
         settings: Settings,
     ):
-        self.run_state, self.settings = run_state, settings
+        self.case_file, self.settings = case_file, settings
         self.tool_executor, self.llm_caller = tool_executor, llm_caller
 
     # -------------------------------------------------------------- prompts
     def _first_user_message(self) -> str:
         """First user message: escaped feedback, metadata, fixed classification, flags, budget."""
-        feedback, classification = self.run_state.feedback, self.run_state.classification
+        feedback, classification = self.case_file.feedback, self.case_file.classification
         alternatives = (
             ", ".join(
                 f"{alternative.category.value} ({alternative.confidence:.2f})"
@@ -111,7 +111,7 @@ class AgentLoop:
             )
             or "none"
         )
-        flags = sorted(self.run_state.flags) or ["none"]
+        flags = sorted(self.case_file.flags) or ["none"]
         return (
             f"{guard.wrap_feedback(feedback.text)}\n\n"
             f"Metadata: customer_email={guard.escape(feedback.customer_email)}; channel={feedback.channel.value}; "
@@ -147,23 +147,23 @@ class AgentLoop:
         Arguments come from code (category, metadata email, policy_query); the results are added
         to the last message and step_limit_reached is flagged. No extra LLM turn is used.
         """
-        run_state, evidence = self.run_state, self.run_state.evidence
+        case_file, evidence = self.case_file, self.case_file.evidence
         plan = {
             "guidelines": (
                 "get_cs_guidelines",
-                {"category": run_state.classification.category.value},
+                {"category": case_file.classification.category.value},
             ),
-            "customer": ("lookup_customer", {"email": run_state.feedback.customer_email}),
+            "customer": ("lookup_customer", {"email": case_file.feedback.customer_email}),
             "policies": (
                 "search_policies",
                 {
-                    "query": policy_query(run_state.classification, run_state.feedback),
-                    "category": run_state.classification.category.value,
+                    "query": policy_query(case_file.classification, case_file.feedback),
+                    "category": case_file.classification.category.value,
                 },
             ),
         }
         blocks = []
-        run_state.flags.add(
+        case_file.flags.add(
             "step_limit_reached"
         )  # the cap forced the system to do the retrieval itself
         for source in list(evidence.missing_sources):
@@ -183,7 +183,7 @@ class AgentLoop:
         Outcomes: submitted, grounding_failed, incomplete_context, llm_unavailable,
         budget_exhausted. The last turn only offers submit_report (ToolChoice "required").
         """
-        run_state, evidence, settings = self.run_state, self.run_state.evidence, self.settings
+        case_file, evidence, settings = self.case_file, self.case_file.evidence, self.settings
         messages = [
             Message("system", load_prompt(AGENT_PROMPT)),
             Message("user", self._first_user_message()),
@@ -224,7 +224,7 @@ class AgentLoop:
             if any(
                 not isinstance(call.args, dict) for call in llm_turn.tool_calls
             ):  # provider returned an unusable call
-                run_state.tracer.emit(
+                case_file.tracer.emit(
                     Event.llm_error,
                     purpose="agent_turn",
                     turn=turn,
@@ -304,7 +304,7 @@ class AgentLoop:
         the issues back ("fix"); a second failure, or any failure on the last turn, ends the run
         ("grounding_failed"). A gate refusal does not use up the fix.
         """
-        evidence, tracer = self.run_state.evidence, self.run_state.tracer
+        evidence, tracer = self.case_file.evidence, self.case_file.tracer
         if evidence.missing_sources:  # evidence gate: not_found counts as consulted, error does not
             tracer.emit(
                 Event.grounding_validation,
@@ -325,7 +325,7 @@ class AgentLoop:
             )
         try:
             draft = ReportDraft.model_validate(call.args)
-            issues = validate_draft(draft, evidence, self.run_state.feedback.text)
+            issues = validate_draft(draft, evidence, self.case_file.feedback.text)
         except ValidationError as e:
             draft, issues = (
                 None,
