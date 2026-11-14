@@ -8,22 +8,24 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .bootstrap import open_store
+from .bootstrap import open_database
 from .config import Settings
 from .hitl import ReviewError, ReviewRequest, ReviewService, pending_summary
 
 
 def cmd_reports(args, settings: Settings) -> int:
-    for row in open_store(settings).list_reports(args.status):
+    """`reports`: print one summary line per report, optionally only --status."""
+    for row in open_database(settings).list_reports(args.status):
         print(json.dumps(pending_summary(row)))
     return 0
 
 
 def cmd_show(args, settings: Settings) -> int:
+    """`show`: print a report with its status and review audit."""
     try:
         print(
             json.dumps(
-                ReviewService(open_store(settings), settings).get(args.report_id),
+                ReviewService(open_database(settings), settings).get(args.report_id),
                 indent=2,
                 ensure_ascii=False,
             )
@@ -35,10 +37,11 @@ def cmd_show(args, settings: Settings) -> int:
 
 
 def cmd_review(args, settings: Settings) -> int:
+    """`review`: record an officer's decision (overrides from a JSON file), print the result."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     overrides = json.loads(Path(args.overrides).read_text("utf-8")) if args.overrides else None
     try:
-        review_result = ReviewService(open_store(settings), settings).review(
+        review_result = ReviewService(open_database(settings), settings).review(
             args.report_id,
             ReviewRequest(
                 decision=args.decision, actor=args.actor, note=args.note or "", overrides=overrides
@@ -52,6 +55,7 @@ def cmd_review(args, settings: Settings) -> int:
 
 
 def cmd_serve(args, settings: Settings) -> int:
+    """`serve`: start the HTTP API with uvicorn."""
     import uvicorn
     from .api import create_app
 
@@ -60,6 +64,7 @@ def cmd_serve(args, settings: Settings) -> int:
 
 
 def cmd_samples(args, settings: Settings) -> int:
+    """`samples`: regenerate samples/<name>/ outputs and say whether expectations were met."""
     from .samples import run_samples
 
     modes = ["live", "scripted"] if args.mode == "both" else [args.mode]
@@ -73,7 +78,7 @@ def cmd_samples(args, settings: Settings) -> int:
 
 
 def cmd_demo(args, settings: Settings) -> int:
-    """Offline end-to-end demo (no API key): run one sample, show the trace, then approve it as an officer."""
+    """`demo`: offline run of one sample (no API key): report, trace, queue, then approval."""
     from .samples import SAMPLES, load_manifest
     from .trace import load_trace, render_trace
 
@@ -98,9 +103,9 @@ def cmd_demo(args, settings: Settings) -> int:
         report = pipeline.process(feedback)
         print("=== REPORT\n" + report.model_dump_json(indent=2, exclude_none=True))
         print("\n=== TRACE\n" + render_trace(load_trace(report.trace_id, settings.trace_dir)))
-        review_service = ReviewService(pipeline.store, settings)
+        review_service = ReviewService(pipeline.database, settings)
         print("\n=== REVIEW QUEUE (pending_review)")
-        for row in pipeline.store.list_reports("pending_review"):
+        for row in pipeline.database.list_reports("pending_review"):
             print(json.dumps(pending_summary(row)))
         print("\n=== OFFICER APPROVES")
         approval = ReviewRequest(decision="approve", actor="demo.officer")
@@ -109,6 +114,7 @@ def cmd_demo(args, settings: Settings) -> int:
 
 
 def register(subparsers) -> None:
+    """Add the reports, show, review, serve, samples, demo and eval subcommands."""
     reports_parser = subparsers.add_parser("reports", help="list reports in the review queue")
     reports_parser.add_argument("--status", default="pending_review")
     reports_parser.set_defaults(fn=cmd_reports)
@@ -139,6 +145,10 @@ def register(subparsers) -> None:
 
 
 def cmd_eval(args, settings: Settings) -> int:
+    """`eval`: run the labelled cases on a live provider; write JSON and Markdown results.
+
+    --sweep 3,4,5 repeats everything per max_llm_turns value. Exit 1 if a run crashed (CI gate).
+    """
     from datetime import datetime, timezone
     from .config import ROOT
     from .evaluation import load_cases, render_markdown, run_eval
@@ -184,6 +194,7 @@ def cmd_eval(args, settings: Settings) -> int:
 
 
 def register_eval(subparsers) -> None:
+    """Add the `eval` subcommand and its options."""
     from .config import ROOT
 
     eval_parser = subparsers.add_parser(

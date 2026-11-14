@@ -10,13 +10,13 @@ from . import guard
 from .agent import AgentLoop, RunState, ToolExecutor, policy_query
 from .classify import classify, keyword_classify
 from .config import Settings
+from .database import Database
 from .evidence import SYSTEM_GUIDELINE, Evidence
 from .llm.base import LLMProvider
 from .llmcaller import LLMCaller, LLMUnavailable
 from .prompts import AGENT_PROMPT, CLASSIFY_PROMPT
 from .report import build_report
 from .schemas import Feedback, Report
-from .store import Store
 from .tools import FaultInjector, KnowledgeBase, ToolContext
 from .trace import Event, Tracer, new_trace_id
 
@@ -24,23 +24,31 @@ PROMPT_VERSIONS = {"classify": CLASSIFY_PROMPT, "agent": AGENT_PROMPT}
 
 
 class FeedbackPipeline:
+    """All steps for one feedback; holds what requests share (database, KB, provider)."""
+
     def __init__(
         self,
         settings: Settings,
-        store: Store,
+        database: Database,
         knowledge_base: KnowledgeBase,
         provider: LLMProvider,
         fault_injector: Optional[FaultInjector] = None,
     ):
-        self.settings, self.store, self.knowledge_base, self.provider = (
+        self.settings, self.database, self.knowledge_base, self.provider = (
             settings,
-            store,
+            database,
             knowledge_base,
             provider,
         )
         self.fault_injector = fault_injector or FaultInjector()
 
     def process(self, feedback: Feedback) -> Report:
+        """Run one feedback end to end and return the saved report (status pending_review).
+
+        intake + injection scan -> classify (keyword rules if the LLM fails) -> agent loop ->
+        degraded lookups when there is no draft -> build_report -> save. Raises StorageError when
+        saving fails.
+        """
         settings, tracer = self.settings, Tracer(new_trace_id(), self.settings)
         feedback.feedback_id = feedback.feedback_id or "fb_" + uuid.uuid4().hex[:10]
         tracer.emit(
@@ -75,7 +83,7 @@ class FeedbackPipeline:
         tracer.emit(Event.classification_completed, **classification.model_dump(mode="json"))
 
         tool_context = ToolContext(
-            self.store,
+            self.database,
             self.knowledge_base,
             feedback.customer_email,
             feedback.customer_id,
@@ -155,14 +163,14 @@ class FeedbackPipeline:
             actions=[action.type.value for action in report.suggested_actions],
             counters=counters,
         )
-        self.store.save_feedback(
+        self.database.save_feedback(
             feedback,
             "injection_suspected" in flags,
             classification,
             CLASSIFY_PROMPT,
             tracer.trace_id,
         )
-        self.store.save_report(
+        self.database.save_report(
             report, evidence.to_dict()
         )  # StorageError propagates: never claim "queued"
         return report
@@ -171,7 +179,10 @@ class FeedbackPipeline:
     def _degraded_lookups(
         run_state: RunState, tool_executor: ToolExecutor, tracer: Tracer, reason: str
     ) -> dict:
-        """No-LLM path: keep everything that already succeeded, call only the missing sources."""
+        """No-LLM path: keep everything that already succeeded, call only the missing sources.
+
+        Returns {source: error} for the sources still missing afterwards.
+        """
         evidence = run_state.evidence
         plan = {
             "guidelines": (

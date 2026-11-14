@@ -15,6 +15,8 @@ class LLMUnavailable(RuntimeError):
 
 
 class LLMCaller:
+    """The one place that calls the LLM provider for a run."""
+
     def __init__(self, provider: LLMProvider, settings: Settings, tracer: Tracer):
         self.provider, self.settings, self.tracer = provider, settings, tracer
 
@@ -27,6 +29,11 @@ class LLMCaller:
         tool_choice: ToolChoice,
         turn: Optional[int] = None,
     ) -> LLMTurn:
+        """Call the provider, retrying once on a transient error; every attempt is traced.
+
+        `purpose` (classify / agent_turn) and `turn` only label the trace. Raises LLMUnavailable
+        on a permanent error or when the retry fails too.
+        """
         # A retry of the same request does not use up an agent turn (it has its own cap of 1).
         for attempt in (1, 2):
             started = time.monotonic()

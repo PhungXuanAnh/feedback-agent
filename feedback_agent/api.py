@@ -10,13 +10,13 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .apiguard import ApiGuard
-from .bootstrap import build_pipeline, open_store
+from .bootstrap import build_pipeline, open_database
 from .config import Settings
+from .database import StorageError
 from .hitl import ReviewError, ReviewRequest, ReviewService, pending_summary
 from .llm import ConfigError
 from .pipeline import FeedbackPipeline
 from .schemas import Category, Channel, Feedback, Report, SuggestedAction, Urgency
-from .store import StorageError
 from .trace import load_trace_by_id
 
 
@@ -106,16 +106,20 @@ NOT_FOUND = {404: {"model": ErrorMessage, "description": "Not found"}}
 def create_app(
     settings: Optional[Settings] = None, pipeline: Optional[FeedbackPipeline] = None
 ) -> FastAPI:
+    """The FastAPI app. Tests pass `pipeline`; otherwise it is built on the first POST /feedback,
+    so the app starts (and /health answers) even when the LLM config is missing.
+    """
     settings = settings or Settings.from_env()
     app = FastAPI(title="Feedback agent", version="0.1.0")
     state: dict[str, Any] = {"pipeline": pipeline}
-    store = pipeline.store if pipeline else open_store(settings)
-    reviews = ReviewService(store, settings)
-    guard = ApiGuard(settings, store)
+    database = pipeline.database if pipeline else open_database(settings)
+    reviews = ReviewService(database, settings)
+    guard = ApiGuard(settings, database)
     protected = [Depends(guard.auth)]  # /health and the API docs stay open
 
     @app.get("/health")
     def health() -> dict[str, str]:
+        """Liveness check; needs no token."""
         return {"status": "ok"}
 
     @app.post(
@@ -127,11 +131,12 @@ def create_app(
             429: {"model": ErrorMessage, "description": "Rate limit or daily cap reached"},
             503: {
                 "model": ErrorMessage,
-                "description": "Report not queued: store or LLM config unavailable",
+                "description": "Report not queued: database or LLM config unavailable",
             },
         },
     )
     def submit_feedback(body: FeedbackIn) -> Report:
+        """Run the feedback through the pipeline and return the report, saved as pending_review."""
         try:
             if state["pipeline"] is None:
                 state["pipeline"] = build_pipeline(settings)
@@ -155,7 +160,8 @@ def create_app(
         responses=UNAUTHORIZED,
     )
     def list_reports(status: Optional[str] = None) -> list[dict]:
-        return [pending_summary(row) for row in store.list_reports(status)]
+        """List reports, optionally of one status (e.g. pending_review)."""
+        return [pending_summary(row) for row in database.list_reports(status)]
 
     @app.get(
         "/reports/{report_id}",
@@ -164,6 +170,7 @@ def create_app(
         responses={**UNAUTHORIZED, **NOT_FOUND},
     )
     def get_report(report_id: str) -> dict:
+        """One report with its review status and audit trail."""
         try:
             return reviews.get(report_id)
         except ReviewError as e:
@@ -193,6 +200,7 @@ def create_app(
         },
     )
     def review(report_id: str, review_request: ReviewRequest) -> dict:
+        """Record the officer's decision: approve, override (with changes) or reject."""
         try:
             return reviews.review(report_id, review_request)
         except ReviewError as e:
@@ -205,6 +213,7 @@ def create_app(
         responses={**UNAUTHORIZED, **NOT_FOUND},
     )
     def trace(trace_id: str) -> list[dict]:
+        """Every step of the run that produced a report, by trace id."""
         try:
             return load_trace_by_id(trace_id, settings.trace_dir)
         except FileNotFoundError:

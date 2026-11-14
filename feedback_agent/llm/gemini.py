@@ -19,7 +19,11 @@ _GEMINI_MODES = {"auto": "AUTO", "required": "ANY", "none": "NONE"}  # functionC
 
 
 def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dict[str, Any]:
-    """Reduce a Pydantic JSON-Schema to the OpenAPI subset Gemini accepts ($ref inlined)."""
+    """Reduce a Pydantic JSON-Schema to the OpenAPI subset Gemini accepts ($ref inlined).
+
+    Optional fields lose their null branch: {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    -> {"type": "string"}. Keys Gemini rejects (title, default, ...) are dropped.
+    """
     if not isinstance(schema, dict):
         return schema
     defs = defs if defs is not None else schema.get("$defs", {})
@@ -72,6 +76,7 @@ class GeminiProvider:
         thinking_level: str = "",
         client: Optional[httpx.Client] = None,
     ):
+        """Keep one httpx client for all calls; tests can pass their own `client`."""
         self._api_key = api_key
         self.model = model
         self._base_url = base_url.rstrip("/")
@@ -81,6 +86,11 @@ class GeminiProvider:
 
     # -------------------------------------------------------------- request
     def _contents(self, messages: list[Message]) -> tuple[Optional[dict], list[dict]]:
+        """Our messages -> Gemini's (system_instruction, contents).
+
+        System messages are merged; model turns are replayed from `raw`; a tool message becomes ONE
+        user message with a functionResponse per call (call ids echoed only if Gemini sent them).
+        """
         system = "\n\n".join(message.text for message in messages if message.role == "system")
         contents: list[dict] = []
         api_ids: set[str] = set()
@@ -126,6 +136,10 @@ class GeminiProvider:
         tool_choice: ToolChoice,
         max_output_tokens: int,
     ) -> dict[str, Any]:
+        """The generateContent request body: contents, generation config, tools and tool choice.
+
+        ToolChoice "required" becomes Gemini mode "ANY"; `allowed` becomes allowedFunctionNames.
+        """
         system, contents = self._contents(messages)
         body: dict[str, Any] = {
             "contents": contents,
@@ -166,6 +180,11 @@ class GeminiProvider:
         tool_choice: ToolChoice,
         max_output_tokens: int = 2048,
     ) -> LLMTurn:
+        """POST generateContent and parse the answer; failures raise LLMError.
+
+        Network errors, 429, 5xx and non-JSON bodies are transient (LLMCaller retries once);
+        other 4xx are permanent.
+        """
         body = self.build_body(messages, tools, tool_choice, max_output_tokens)
         url = f"{self._base_url}/v1beta/models/{self.model}:generateContent"
         try:
@@ -195,7 +214,7 @@ class GeminiProvider:
 
     @staticmethod
     def _error_message(response: httpx.Response) -> str:
-        """Best-effort text of an HTTP error body; any unexpected shape yields an empty string, never an exception."""
+        """Error text of an HTTP error body, or "" for any unexpected shape (never raises)."""
         try:
             error = response.json().get("error")
             message = error.get("message") if isinstance(error, dict) else None
@@ -205,6 +224,7 @@ class GeminiProvider:
 
     @staticmethod
     def _usage(payload: Any) -> Optional[dict]:
+        """Token usage from usageMetadata (output = answer + thinking tokens); None if absent."""
         usage = payload.get("usageMetadata") if isinstance(payload, dict) else None
         if not isinstance(usage, dict) or not usage:
             return None
@@ -217,8 +237,11 @@ class GeminiProvider:
 
     @classmethod
     def parse(cls, payload: Any) -> LLMTurn:
-        """generateContent response -> LLMTurn. Anything malformed becomes an LLMError that still carries
-        the usage the provider reported, because a failed attempt is billed too."""
+        """Gemini response -> LLMTurn with usage attached.
+
+        A malformed answer raises LLMError that still carries the reported usage, because failed
+        attempts are billed too.
+        """
         usage = cls._usage(payload)
         try:
             turn = cls._parse(payload)
@@ -230,6 +253,10 @@ class GeminiProvider:
 
     @staticmethod
     def _parse(payload: Any) -> LLMTurn:
+        """Tool calls and visible text (thought parts skipped) of the first candidate.
+
+        Blocked, empty or malformed answers raise LLMError; transient ones are worth a retry.
+        """
         if not isinstance(payload, dict):
             raise LLMError("unexpected response shape (not an object)", transient=True)
         candidates = payload.get("candidates") or []

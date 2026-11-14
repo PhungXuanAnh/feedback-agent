@@ -14,9 +14,9 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 from .config import Settings
+from .database import Database
 from .evidence import Evidence
 from .schemas import ActionType, Category, Report, SuggestedAction, Urgency
-from .store import Store
 from .trace import Event, Tracer
 from .validator import validate_actions
 
@@ -60,6 +60,10 @@ class StubExecutor:
         self.calls: list[str] = []
 
     def execute(self, report_id: str, actions: list[SuggestedAction]) -> list[str]:
+        """The API call each action would make, logged and returned.
+
+        Example: issue_refund -> 'POST /billing/refunds {"invoice_id": ..., "amount": ..., ...}'.
+        """
         executed_calls = []
         for action in actions:
             params = action.params.model_dump(exclude_none=True)
@@ -78,6 +82,10 @@ class StubExecutor:
 
 
 def _snapshot(report: dict, overrides: Optional[Overrides] = None) -> dict:
+    """The reviewable part of a report (category, urgency, actions, question), overrides applied.
+
+    Saved as before/after in the audit row, so the machine's suggestion stays next to the final one.
+    """
     snapshot = {
         "category": report["category"],
         "urgency": report["urgency"],
@@ -91,17 +99,20 @@ def _snapshot(report: dict, overrides: Optional[Overrides] = None) -> dict:
 
 
 class ReviewService:
+    """Applies an officer's decision to a pending report and runs the approved actions."""
+
     def __init__(
-        self, store: Store, settings: Settings, action_executor: Optional[StubExecutor] = None
+        self, database: Database, settings: Settings, action_executor: Optional[StubExecutor] = None
     ):
-        self.store, self.settings, self.action_executor = (
-            store,
+        self.database, self.settings, self.action_executor = (
+            database,
             settings,
             action_executor or StubExecutor(),
         )
 
     def get(self, report_id: str) -> dict:
-        row = self.store.get_report_row(report_id)
+        """Report, status and audit rows; `final` is the officer's version after an override."""
+        row = self.database.get_report_row(report_id)
         if not row:
             raise ReportNotFound(report_id)
         report = json.loads(row["payload_json"])
@@ -112,7 +123,7 @@ class ReviewService:
                     json.loads(review["overrides_json"]) if review["overrides_json"] else None
                 ),
             }
-            for review in self.store.reviews_for(report_id)
+            for review in self.database.reviews_for(report_id)
         ]
         for review in reviews:
             review.pop("overrides_json")
@@ -131,7 +142,13 @@ class ReviewService:
         }
 
     def review(self, report_id: str, review_request: ReviewRequest) -> dict:
-        row = self.store.get_report_row(report_id)
+        """Apply approve / override / reject to a pending report and return the outcome.
+
+        An override must pass validate_actions against the saved evidence (else 422). The first
+        decision wins: the same one again is an idempotent replay, a different one -> 409.
+        Approved or overridden actions then go to the executor and the report becomes executed.
+        """
+        row = self.database.get_report_row(report_id)
         if not row:
             raise ReportNotFound(report_id)
         report = json.loads(row["payload_json"])
@@ -157,7 +174,7 @@ class ReviewService:
         new_status = {"approve": "approved", "override": "overridden", "reject": "rejected"}[
             review_request.decision
         ]
-        applied = self.store.apply_review(
+        applied = self.database.apply_review(
             report_id,
             new_status,
             {
@@ -173,7 +190,7 @@ class ReviewService:
         if (
             not applied
         ):  # somebody decided first: same decision = replay of the old result, otherwise 409
-            first = self.store.reviews_for(report_id)[0]
+            first = self.database.reviews_for(report_id)[0]
             if (
                 first["decision"] == review_request.decision
                 and first["overrides_json"] == overrides_json
@@ -185,8 +202,8 @@ class ReviewService:
             final = after["suggested_actions"] if after else report["suggested_actions"]
             final_actions = [SuggestedAction.model_validate(action) for action in final]
             execution = self.action_executor.execute(report_id, final_actions)
-            self.store.mark_executed(report_id, datetime.now(timezone.utc).isoformat())
-        status = self.store.get_report_row(report_id)["status"]
+            self.database.mark_executed(report_id, datetime.now(timezone.utc).isoformat())
+        status = self.database.get_report_row(report_id)["status"]
         Tracer(report["trace_id"], self.settings).emit(
             Event.human_review,
             report_id=report_id,
@@ -201,7 +218,8 @@ class ReviewService:
         }
 
     def _result(self, report_id: str, decision: str) -> dict[str, Any]:
-        row = self.store.get_report_row(report_id)
+        """Short outcome of a decision: report id, decision, current status, executed or not."""
+        row = self.database.get_report_row(report_id)
         return {
             "report_id": report_id,
             "decision": decision,
@@ -211,6 +229,7 @@ class ReviewService:
 
 
 def pending_summary(row: dict) -> dict:
+    """One row of the review queue: the fields an officer needs to pick a report."""
     report = json.loads(row["payload_json"])
     return {
         "report_id": row["id"],

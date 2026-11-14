@@ -115,14 +115,14 @@ def test_tool_errors_retry_once_then_incomplete_context_never_not_found(run):
     assert rep.suggested_actions[0].basis == ["GL-TRIAGE"] and rep.confidence_level == "low"
 
 
-def test_broken_report_store_raises_instead_of_claiming_queued(run, store, monkeypatch):
+def test_broken_database_raises_instead_of_claiming_queued(run, database, monkeypatch):
     import pytest
-    from feedback_agent.store import StorageError
+    from feedback_agent.database import StorageError
 
     def boom(*a, **k):
         raise StorageError("disk full")
 
-    monkeypatch.setattr(store, "save_report", boom)
+    monkeypatch.setattr(database, "save_report", boom)
     with pytest.raises(StorageError):
         run([classify_step(), calls(G, C, P), submit()])
 

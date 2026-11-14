@@ -73,7 +73,11 @@ _QSTOP = {
 
 
 def policy_query(classification: Classification, feedback: Feedback) -> str:
-    """Deterministic keyword query used when the system (not the LLM) has to search policies."""
+    """Deterministic keyword query used when the system (not the LLM) has to search policies.
+
+    Example: billing_issue + "I was charged twice for invoice INV-5005, please refund!"
+    -> "billing issue charged twice invoice inv 5005 please refund".
+    """
     words = [
         word
         for word in re.findall(r"[a-z0-9]+", feedback.text.lower())
@@ -108,12 +112,22 @@ class ToolExecutor:
 
     @staticmethod
     def _cache_key(name: str, args: dict) -> str:
+        """Tool name + args with strings trimmed and lowercased, keys sorted.
+
+        So {"email": " A@x.com"} and {"email": "a@x.com"} share one cache entry.
+        """
         normalized_args = {
             k: (v.strip().lower() if isinstance(v, str) else v) for k, v in (args or {}).items()
         }
         return name + json.dumps(normalized_args, sort_keys=True, default=str)
 
     def call(self, name: str, args: dict[str, Any], origin: str = "llm") -> ToolResult:
+        """Run one tool call under the run's rules and return its result (never raises).
+
+        Order: cache hit -> budget (only origin="llm" counts against max_tool_calls) -> run_tool,
+        retried once if retryable -> _finish. origin: llm, forced_by_system (last-turn lookups)
+        or degraded (no-LLM path).
+        """
         tracer, cache_key = self.run_state.tracer, self._cache_key(name, args)
         if cache_key in self._cache:  # same call twice in a run: no new work, no budget
             self.cache_hits += 1
@@ -180,6 +194,11 @@ class ToolExecutor:
         return tool_result
 
     def _finish(self, tool_result: ToolResult, name: str, cache_key: str) -> None:
+        """Book a result: evidence, flags, failed sources and an injection scan of its data.
+
+        Successes and LLM mistakes (out_of_scope, invalid_arguments) are cached; source errors are
+        not, so a later call can still succeed.
+        """
         self.run_state.evidence.record(tool_result)
         self.run_state.flags.update(tool_result.flags)
         if tool_result.status is ToolStatus.error:
@@ -202,6 +221,7 @@ class ToolExecutor:
             )
 
     def counters(self) -> dict[str, int]:
+        """Tool counters for the report (tool_calls = calls the LLM made)."""
         return {
             "tool_calls": self.llm_tool_calls,
             "forced_by_system": self.forced_calls,
@@ -220,6 +240,8 @@ class AgentResult:
 
 
 class AgentLoop:
+    """The multi-turn conversation in which the LLM gathers evidence and submits a report."""
+
     def __init__(
         self,
         run_state: RunState,
@@ -232,6 +254,7 @@ class AgentLoop:
 
     # -------------------------------------------------------------- prompts
     def _opening(self) -> str:
+        """First user message: escaped feedback, metadata, fixed classification, flags, budget."""
         feedback, classification = self.run_state.feedback, self.run_state.classification
         alternatives = (
             ", ".join(
@@ -255,7 +278,13 @@ class AgentLoop:
         )
 
     @staticmethod
-    def _payload(tool_result: ToolResult, origin: str = "llm") -> dict[str, Any]:
+    def _tool_call_response_body(tool_result: ToolResult, origin: str = "llm") -> dict[str, Any]:
+        """The reply the LLM receives for one tool call (sent as Gemini's functionResponse).
+
+        The result goes in escaped <tool_result> tags so the LLM reads it as data, not orders;
+        status (and error, if any) are repeated at the top level. Example, refused lookup:
+        {"status": "error", "error": "out_of_scope", "content": "<tool_result>...</tool_result>"}
+        """
         payload: dict[str, Any] = {
             "status": tool_result.status.value,
             "content": guard.wrap_tool_result(tool_result.tool, tool_result.to_dict(), origin),
@@ -265,6 +294,11 @@ class AgentLoop:
         return payload
 
     def _forced_lookups(self, messages: list[Message]) -> None:
+        """Last turn with sources still missing: the system runs those lookups itself.
+
+        Arguments come from code (category, metadata email, policy_query); the results are added
+        to the last message and step_limit_reached is flagged. No extra LLM turn is used.
+        """
         run_state, evidence = self.run_state, self.run_state.evidence
         plan = {
             "guidelines": (
@@ -296,6 +330,11 @@ class AgentLoop:
         last.text = (last.text + "\n\n" if last.text else "") + note
 
     def loop(self) -> AgentResult:
+        """Converse until a draft is accepted or a stop rule fires; return the outcome.
+
+        Outcomes: submitted, grounding_failed, incomplete_context, llm_unavailable,
+        budget_exhausted. The last turn only offers submit_report (ToolChoice "required").
+        """
         run_state, evidence, settings = self.run_state, self.run_state.evidence, self.settings
         messages = [Message("system", load_prompt(AGENT_PROMPT)), Message("user", self._opening())]
         fix_used, turns = False, 0
@@ -309,6 +348,7 @@ class AgentLoop:
                     llm_turns=turns,
                     failed_sources=dict(self.tool_executor.failed_sources),
                 )
+
             if final_turn:
                 if evidence.missing_sources:
                     self._forced_lookups(messages)
@@ -322,12 +362,14 @@ class AgentLoop:
                 tools, tool_choice = [SUBMIT_TOOL], ToolChoice("required", ["submit_report"])
             else:
                 tools, tool_choice = tool_specs(SUBMIT_TOOL), ToolChoice("auto")
+
             try:
                 llm_turn = self.llm_caller.call(
                     "agent_turn", AGENT_PROMPT, messages, tools, tool_choice, turn
                 )
             except LLMUnavailable:
                 return AgentResult("llm_unavailable", llm_turns=turns)
+
             if any(
                 not isinstance(call.args, dict) for call in llm_turn.tool_calls
             ):  # provider returned an unusable call
@@ -338,6 +380,7 @@ class AgentLoop:
                     error="tool call args are not an object",
                 )
                 return AgentResult("llm_unavailable", llm_turns=turns)
+
             turns = turn
             messages.append(llm_turn.as_message())
             if not llm_turn.tool_calls:
@@ -349,7 +392,9 @@ class AgentLoop:
                     )
                 )
                 continue
-            responses, draft, verdict = self._answer(llm_turn.tool_calls, final_turn, fix_used)
+            responses, draft, verdict = self._reply_to_tool_calls(
+                llm_turn.tool_calls, final_turn, fix_used
+            )
             messages.append(Message("tool", tool_responses=responses))
             if verdict == "fix":
                 fix_used = True
@@ -363,12 +408,17 @@ class AgentLoop:
 
     _rejected_draft: Optional[dict] = None
 
-    def _answer(self, calls: list[ToolCall], final_turn: bool, fix_used: bool):
+    def _reply_to_tool_calls(self, calls: list[ToolCall], final_turn: bool, fix_used: bool):
+        """Reply to each tool call of a model turn -> (responses in call order, draft, verdict).
+
+        Retrieval calls run first. submit_report in the same turn as retrieval -> submit_too_early,
+        a second submit -> duplicate_submit. verdict: None, "gate", "fix" or "grounding_failed".
+        """
         response_by_call_id: dict[str, dict] = {}
         retrieval_calls = [call for call in calls if call.name != "submit_report"]
         submit_calls = [call for call in calls if call.name == "submit_report"]
         for call in retrieval_calls:
-            response_by_call_id[call.id] = self._payload(
+            response_by_call_id[call.id] = self._tool_call_response_body(
                 self.tool_executor.call(call.name, call.args)
             )
         draft, verdict = None, None
@@ -387,7 +437,7 @@ class AgentLoop:
                     "message": "only one submit_report per turn.",
                 }
             else:
-                response_by_call_id[call.id], draft, verdict = self._handle_submit(
+                response_by_call_id[call.id], draft, verdict = self._check_submit_report(
                     call, final_turn, fix_used
                 )
         return (
@@ -396,7 +446,13 @@ class AgentLoop:
             verdict,
         )
 
-    def _handle_submit(self, call: ToolCall, final_turn: bool, fix_used: bool):
+    def _check_submit_report(self, call: ToolCall, final_turn: bool, fix_used: bool):
+        """Check one submit_report: evidence gate, schema, then validate_draft.
+
+        Returns (response, draft if accepted, verdict). One fix is allowed: the first failure sends
+        the issues back ("fix"); a second failure, or any failure on the last turn, ends the run
+        ("grounding_failed"). A gate refusal does not use up the fix.
+        """
         evidence, tracer = self.run_state.evidence, self.run_state.tracer
         if evidence.missing_sources:  # evidence gate: not_found counts as consulted, error does not
             tracer.emit(

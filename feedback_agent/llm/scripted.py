@@ -25,16 +25,24 @@ class ScriptedProvider:
     model = "scripted-v1"
 
     def __init__(self, script: list[Step]):
+        """Turns to replay in order; `seen` keeps every conversation sent, for test asserts."""
         self._script = list(script)
         self.calls = 0
         self.seen: list[list[Message]] = []
 
     @classmethod
     def from_file(cls, path: str | Path) -> "ScriptedProvider":
+        """Load the script from a JSON file holding a list of turns (see samples/scripts/)."""
         return cls(json.loads(Path(path).read_text("utf-8")))
 
     @staticmethod
     def check_conversation(messages: list[Message]) -> None:
+        """Raise ScriptError for a conversation Gemini would reject.
+
+        It must start with a user message; a model turn with calls must be answered by ONE tool
+        message with the same ids in order; no two model turns in a row; the last message is not
+        a model turn.
+        """
         conversation = [m for m in messages if m.role != "system"]
         if not conversation or conversation[0].role != "user":
             raise ScriptError("conversation must start with a user message")
@@ -63,6 +71,12 @@ class ScriptedProvider:
         tool_choice: ToolChoice,
         max_output_tokens: int = 2048,
     ) -> LLMTurn:
+        """Next scripted turn, after checking the request like a real provider would.
+
+        A step is an LLMTurn, {"text": ..., "tool_calls": [{"name": ..., "args": ...}]} or
+        {"error": "transient" | "permanent"}. A call to a tool not offered, or against
+        tool_choice, raises ScriptError.
+        """
         self.check_conversation(messages)
         self.seen.append(list(messages))
         if not self._script:
@@ -110,6 +124,7 @@ class FaultInjectingProvider:
         self.calls = 0
 
     def generate(self, messages, tools, tool_choice, max_output_tokens: int = 2048) -> LLMTurn:
+        """Raise a transient LLMError from call `fail_from_call` on; earlier calls pass through."""
         self.calls += 1
         if self.calls >= self._fail_from_call:
             raise LLMError("injected provider failure", transient=True)

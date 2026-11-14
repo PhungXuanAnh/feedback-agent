@@ -25,6 +25,7 @@ class ConfigError(ValueError):
 
 
 def _gemini(settings: Settings, **_: Any) -> LLMProvider:
+    """Build the Gemini provider; ConfigError if the API key or the model is not set."""
     if not settings.llm_api_key:
         raise ConfigError(
             "GEMINI_API_KEY (or LLM_API_KEY) is not set; use LLM_PROVIDER=scripted for offline runs"
@@ -42,6 +43,7 @@ def _gemini(settings: Settings, **_: Any) -> LLMProvider:
 
 
 def _scripted(settings: Settings, script: Any = None, **_: Any) -> LLMProvider:
+    """Build the scripted provider from a list of turns or a JSON file path."""
     if script is None:
         raise ConfigError(
             "the scripted provider needs a script (turns list or path to a JSON file)"
@@ -55,6 +57,10 @@ PROVIDERS: dict[str, Callable[..., LLMProvider]] = {"gemini": _gemini, "scripted
 
 
 def get_provider(settings: Settings, **kwargs: Any) -> LLMProvider:
+    """Provider named by settings.llm_provider ("gemini" | "scripted").
+
+    Extra kwargs go to its factory, e.g. get_provider(settings, script="samples/scripts/x.json").
+    """
     try:
         factory = PROVIDERS[settings.llm_provider]
     except KeyError:

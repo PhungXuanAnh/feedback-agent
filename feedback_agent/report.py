@@ -27,7 +27,10 @@ _NO_POLICY_OK = {Category.praise, Category.feature_request}
 
 def compute_confidence(classification: Classification, flags: set[str]) -> tuple[float, str]:
     """Heuristic, NOT a calibrated probability: start from the classifier's confidence and subtract
-    for every weakness of the evidence. Weak runs are forced to `low` regardless of the score."""
+    for every weakness of the evidence. Weak runs are forced to `low` regardless of the score.
+
+    Example: 0.90 with unverified_customer -> score 0.75, level medium (never high).
+    """
     score = classification.confidence
     penalties = {
         "unverified_customer": 0.15,
@@ -58,6 +61,7 @@ def compute_confidence(classification: Classification, flags: set[str]) -> tuple
 
 
 def _customer_context(evidence: Evidence, unavailable: bool) -> CustomerContext:
+    """Customer block of the final report: the record's facts, or a note why there is none."""
     if evidence.customer_found:
         customer = evidence.customer
         return CustomerContext(
@@ -76,7 +80,10 @@ def _customer_context(evidence: Evidence, unavailable: bool) -> CustomerContext:
 
 
 def _excerpt(text: str, n: int = 200) -> str:
-    """Whitespace-normalised, cut at a word boundary so a figure or date is never split in half."""
+    """Whitespace-normalised, cut at a word boundary so a figure or date is never split in half.
+
+    Example: _excerpt("refund 1249.50 now", 12) -> "refund..." (not "refund 1249.").
+    """
     normalized = " ".join(text.split())
     if len(normalized) <= n:
         return normalized
@@ -180,6 +187,12 @@ def build_report(
     template_reason: str = "",
     failed_sources: Optional[dict[str, str]] = None,
 ) -> Report:
+    """Final Report from the classification, evidence and draft (from the LLM or the template).
+
+    No draft -> template_draft + the "degraded" flag. Code, not the LLM, adds the flags
+    (unverified_customer, incomplete_context:..., enterprise outage floor, ...), decides
+    needs_human_triage and computes the confidence.
+    """
     failed_sources = failed_sources or {}
     flags = set(flags)
     if draft is None:

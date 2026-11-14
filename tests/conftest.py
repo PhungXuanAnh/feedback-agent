@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from feedback_agent.store import Store
+from feedback_agent.database import Database
 from feedback_agent.tools import KnowledgeBase, ToolContext
 
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -11,8 +11,8 @@ AS_OF = date(2026, 9, 22)  # fixed "now" for every test
 
 
 @pytest.fixture()
-def store(tmp_path):
-    s = Store(str(tmp_path / "t.db"))
+def database(tmp_path):
+    s = Database(str(tmp_path / "t.db"))
     s.seed_from_csv(DATA / "seed")
     return s
 
@@ -23,10 +23,10 @@ def kb():
 
 
 @pytest.fixture()
-def make_ctx(store, kb):
+def make_ctx(database, kb):
     def _make(email="billing@orchid-robotics.example", customer_id=None, as_of=AS_OF, **kw):
         return ToolContext(
-            store=store,
+            database=database,
             knowledge_base=kb,
             metadata_email=email,
             metadata_customer_id=customer_id,
@@ -128,7 +128,7 @@ def submit(
 
 
 @pytest.fixture()
-def run(store, kb, tmp_path):
+def run(database, kb, tmp_path):
     def _run(script, feedback=None, fault_injector=None, **settings):
         s = Settings(
             llm_provider="scripted",
@@ -137,7 +137,7 @@ def run(store, kb, tmp_path):
             **settings,
         )
         prov = script if hasattr(script, "generate") else ScriptedProvider(script)
-        rep = FeedbackPipeline(s, store, kb, prov, fault_injector).process(feedback or fb())
+        rep = FeedbackPipeline(s, database, kb, prov, fault_injector).process(feedback or fb())
         return rep, prov
 
     return _run

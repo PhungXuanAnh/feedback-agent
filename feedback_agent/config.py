@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _opt_float(name: str) -> Optional[float]:
+    """Read an optional float env var (e.g. PRICE_PER_MTOK_IN); unset or empty -> None."""
     v = os.getenv(name, "").strip()
     return float(v) if v else None
 
@@ -47,6 +48,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        """Settings from the environment and .env; a field without an env var keeps its default."""
         load_dotenv(ROOT / ".env")
         e = os.getenv
         return cls(

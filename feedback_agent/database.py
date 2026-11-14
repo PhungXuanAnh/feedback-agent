@@ -30,17 +30,22 @@ CREATE TABLE IF NOT EXISTS reviews(id INTEGER PRIMARY KEY AUTOINCREMENT, report_
 
 
 class StorageError(RuntimeError):
-    """The report store is unavailable; callers must not claim a report was queued."""
+    """The database is unavailable; callers must not claim a report was queued."""
 
 
-class Store:
+class Database:
     def __init__(self, path: str):
+        """Remember the DB path and create its folder (":memory:" works for tests)."""
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def conn(self) -> Iterator[sqlite3.Connection]:
+        """A connection for one block of work, then closed; sqlite3 errors become StorageError.
+
+        Autocommit mode: writes that need several statements use explicit BEGIN/COMMIT.
+        """
         try:
             connection = sqlite3.connect(self.path, timeout=10, isolation_level=None)
             connection.row_factory = sqlite3.Row
@@ -55,6 +60,7 @@ class Store:
 
     # ------------------------------------------------------------------ seed
     def init_schema(self) -> None:
+        """Create the tables if they do not exist yet."""
         with self.conn() as connection:
             connection.executescript(SCHEMA)
 
@@ -81,6 +87,7 @@ class Store:
 
     # ------------------------------------------------------- reference reads
     def customer_by_email(self, email: str) -> Optional[dict]:
+        """Customer row for this email (case-insensitive), or None."""
         with self.conn() as connection:
             row = connection.execute(
                 "SELECT * FROM customers WHERE lower(email)=lower(?)", (email,)
@@ -88,6 +95,7 @@ class Store:
         return dict(row) if row else None
 
     def customer_by_id(self, customer_id: str) -> Optional[dict]:
+        """Customer row for this id, or None."""
         with self.conn() as connection:
             row = connection.execute(
                 "SELECT * FROM customers WHERE id=?", (customer_id,)
@@ -95,6 +103,7 @@ class Store:
         return dict(row) if row else None
 
     def tickets_for(self, customer_id: str) -> list[dict]:
+        """The customer's tickets, newest first."""
         with self.conn() as connection:
             rows = connection.execute(
                 "SELECT id AS ticket_id, subject, status, opened_at FROM tickets WHERE customer_id=? "
@@ -104,6 +113,7 @@ class Store:
         return [dict(row) for row in rows]
 
     def invoices_for(self, customer_id: str) -> list[dict]:
+        """The customer's invoices, newest first."""
         with self.conn() as connection:
             rows = connection.execute(
                 "SELECT id AS invoice_id, amount, date, status FROM invoices WHERE customer_id=? "
@@ -121,6 +131,7 @@ class Store:
         prompt_version: str,
         trace_id: str,
     ) -> None:
+        """Insert or replace the feedback row with its classification (audit and analytics)."""
         with self.conn() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO feedback VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -142,6 +153,7 @@ class Store:
             )
 
     def save_report(self, report: Any, evidence: dict) -> None:
+        """Insert a new report together with the evidence it was built from."""
         with self.conn() as connection:
             connection.execute(
                 "INSERT INTO reports(id,feedback_id,status,payload_json,evidence_json,flags_json,"
@@ -159,11 +171,13 @@ class Store:
             )
 
     def get_report_row(self, report_id: str) -> Optional[dict]:
+        """Raw reports row (payload and evidence still JSON strings), or None."""
         with self.conn() as connection:
             row = connection.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
         return dict(row) if row else None
 
     def list_reports(self, status: Optional[str] = None) -> list[dict]:
+        """Report rows, oldest first, optionally of one status (e.g. "pending_review")."""
         query, args = "SELECT * FROM reports", ()
         if status:
             query, args = query + " WHERE status=?", (status,)
@@ -184,6 +198,7 @@ class Store:
         return len(rows), tokens
 
     def reviews_for(self, report_id: str) -> list[dict]:
+        """Audit rows of a report in the order they were written."""
         with self.conn() as connection:
             rows = connection.execute(
                 "SELECT * FROM reviews WHERE report_id=? ORDER BY id", (report_id,)
@@ -221,6 +236,7 @@ class Store:
             return True
 
     def mark_executed(self, report_id: str, at: str) -> bool:
+        """Mark an approved/overridden report executed; False if it was not in that state."""
         with self.conn() as connection:
             cursor = connection.execute(
                 "UPDATE reports SET status='executed', executed_at=? WHERE id=? "

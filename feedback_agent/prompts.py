@@ -8,4 +8,5 @@ _DIR = Path(__file__).parent / "prompts"
 
 
 def load_prompt(name: str) -> str:
+    """Text of a versioned prompt, e.g. "agent.v1" -> prompts/agent.v1.md."""
     return (_DIR / f"{name}.md").read_text(encoding="utf-8")

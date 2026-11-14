@@ -14,7 +14,7 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
 from .config import Settings
-from .store import Store
+from .database import Database
 
 token_header = APIKeyHeader(
     name="X-API-Token", auto_error=False
@@ -22,18 +22,22 @@ token_header = APIKeyHeader(
 
 
 class ApiGuard:
-    def __init__(self, settings: Settings, store: Store):
-        self.settings, self.store = settings, store
+    """FastAPI dependencies that protect the API; each check is off while its setting is unset."""
+
+    def __init__(self, settings: Settings, database: Database):
+        self.settings, self.database = settings, database
         self._hits: dict[str, deque] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def auth(self, key: Optional[str] = Security(token_header)) -> None:
+        """401 unless the X-API-Token header matches settings.api_token (no check when unset)."""
         if self.settings.api_token and not (
             key and secrets.compare_digest(key, self.settings.api_token)
         ):
             raise HTTPException(401, "missing or invalid X-API-Token header")
 
     def _client_ip(self, request: Request) -> str:
+        """Client IP for rate limiting; X-Forwarded-For is used only with trust_proxy."""
         forwarded_for = request.headers.get("x-forwarded-for", "")
         if self.settings.trust_proxy and forwarded_for:
             return forwarded_for.split(",")[0].strip()
@@ -58,7 +62,7 @@ class ApiGuard:
         if self.settings.daily_request_limit or self.settings.daily_token_limit:
             day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             # persisted in SQLite, so restarts do not reset the cap
-            requests_today, tokens = self.store.usage_since(day)
+            requests_today, tokens = self.database.usage_since(day)
             if (
                 self.settings.daily_request_limit
                 and requests_today >= self.settings.daily_request_limit

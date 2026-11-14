@@ -18,9 +18,9 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
+from .database import Database
 from .llm.base import ToolSpec
 from .schemas import Category, TIER_ORDER
-from .store import Store
 
 
 class ToolStatus(str, Enum):
@@ -46,9 +46,11 @@ class ToolResult:
 
     @property
     def consulted(self) -> bool:
+        """found or not_found: the source answered, even if it had no record."""
         return self.status in (ToolStatus.found, ToolStatus.not_found)
 
     def to_dict(self) -> dict[str, Any]:
+        """What the LLM sees of the result: status, plus data/error/message when set."""
         d: dict[str, Any] = {"status": self.status.value}
         if self.data is not None:
             d["data"] = self.data
@@ -121,6 +123,7 @@ TOOL_DESCRIPTIONS = {
 
 
 def tool_specs(include_submit: Any = None) -> list[ToolSpec]:
+    """Specs of the 3 retrieval tools, plus `include_submit` (the submit_report spec) if given."""
     specs = [
         ToolSpec(name, TOOL_DESCRIPTIONS[name], ARG_MODELS[name].model_json_schema())
         for name in RETRIEVAL_TOOLS
@@ -163,10 +166,12 @@ _STOP = {
 
 
 def _stem(token: str) -> str:
+    """Tiny stemmer: drop a plural "s" ("refunds" -> "refund"; short words like "bus" stay)."""
     return token[:-1] if len(token) > 3 and token.endswith("s") else token
 
 
 def _tokens(text: str) -> set[str]:
+    """Stemmed words minus stop words: "Refunds for the invoice" -> {"refund", "invoice"}."""
     return {
         _stem(token)
         for token in re.findall(r"[a-z0-9]+", text.lower())
@@ -186,6 +191,7 @@ class KnowledgeBase:
 
     @classmethod
     def load(cls, data_dir: str | Path) -> "KnowledgeBase":
+        """Load guidelines.json and policies.json from `data_dir`."""
         directory = Path(data_dir)
         return cls(
             json.loads((directory / "guidelines.json").read_text("utf-8")),
@@ -193,11 +199,13 @@ class KnowledgeBase:
         )
 
     def guideline_for(self, category: str) -> Optional[dict]:
+        """The CS guideline of a category (one per category), or None."""
         return next(
             (guideline for guideline in self.guidelines if guideline["category"] == category), None
         )
 
     def guideline_by_id(self, guideline_id: str) -> Optional[dict]:
+        """Guideline with this id, e.g. "GL-TRIAGE" (added by the pipeline as system evidence)."""
         return next(
             (
                 guideline
@@ -224,6 +232,11 @@ class KnowledgeBase:
     def search_policies(
         self, query: str, category: Optional[str], top_k: int, as_of: date
     ) -> list[dict]:
+        """Keyword search over policies in force on `as_of`: best `top_k` first, each with a score.
+
+        Score = 2 per query word found in the policy keywords + 1 per word found in title/text,
+        +3 if the category matches. Policies scoring under MIN_SCORE (2) are dropped.
+        """
         query_tokens = _tokens(query)
         scored = []
         for policy in self.active_policies(as_of):
@@ -249,6 +262,10 @@ class FaultInjector:
     tool_failures: dict[str, int] = field(default_factory=dict)
 
     def fail_if_scheduled(self, tool_name: str) -> None:
+        """Raise TransientToolError if a failure is scheduled for this tool, and use it up.
+
+        Example: {"search_policies": 1} fails only the first call; -1 fails every call.
+        """
         failures_left = self.tool_failures.get(tool_name, 0)
         if failures_left != 0:
             if failures_left > 0:
@@ -258,7 +275,7 @@ class FaultInjector:
 
 @dataclass
 class ToolContext:
-    store: Store
+    database: Database
     knowledge_base: KnowledgeBase
     metadata_email: str
     metadata_customer_id: Optional[str]
@@ -267,6 +284,7 @@ class ToolContext:
 
 
 def _months_between(start: date, end: date) -> int:
+    """Whole months from start to end, never negative: 2026-01-31 -> 2026-03-30 is 1."""
     return max(
         0,
         (end.year - start.year) * 12 + end.month - start.month - (1 if end.day < start.day else 0),
@@ -274,7 +292,11 @@ def _months_between(start: date, end: date) -> int:
 
 
 def duplicate_charge_candidates(invoices: list[dict], max_gap_days: int = 3) -> list[dict]:
-    """Paid invoices with the same amount at most `max_gap_days` apart (code-computed, not LLM)."""
+    """Paid invoices with the same amount at most `max_gap_days` apart (code-computed, not LLM).
+
+    Example: two paid 49.00 invoices on 06-01 and 06-02 -> one group {"invoice_ids": [..2 ids..],
+    "amount": 49.0, "dates": [...]}.
+    """
     paid = sorted(
         (i for i in invoices if i["status"] == "paid"), key=lambda i: (i["amount"], i["date"])
     )
@@ -305,6 +327,7 @@ def duplicate_charge_candidates(invoices: list[dict], max_gap_days: int = 3) -> 
 
 # ------------------------------------------------------------------ tool bodies
 def _get_cs_guidelines(tool_context: ToolContext, args: GuidelinesArgs) -> ToolResult:
+    """Tool body: the guideline of the requested category, or not_found."""
     guideline = tool_context.knowledge_base.guideline_for(args.category.value)
     if not guideline:
         return ToolResult(
@@ -317,6 +340,11 @@ def _get_cs_guidelines(tool_context: ToolContext, args: GuidelinesArgs) -> ToolR
 
 
 def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResult:
+    """Tool body: the sender's profile, open tickets, last 6 invoices and duplicate-charge groups.
+
+    Only the sender named in the feedback metadata may be looked up; any other email or id is
+    refused as out_of_scope with the scope_violation flag.
+    """
     tool_name, source = "lookup_customer", "customer"
     if not args.email and not args.customer_id:
         return ToolResult(
@@ -326,7 +354,7 @@ def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResul
             error="invalid_arguments",
             message="Provide email or customer_id from the feedback metadata.",
         )
-    record = tool_context.store.customer_by_email(tool_context.metadata_email)
+    record = tool_context.database.customer_by_email(tool_context.metadata_email)
     # Scope lock: the lookup may only target the sender named in the feedback metadata.
     if args.email and args.email.strip().lower() != tool_context.metadata_email:
         return ToolResult(
@@ -353,8 +381,8 @@ def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResul
             ToolStatus.not_found,
             message="No customer record for this sender; treat as unverified.",
         )
-    tickets = tool_context.store.tickets_for(record["id"])
-    invoices = tool_context.store.invoices_for(record["id"])
+    tickets = tool_context.database.tickets_for(record["id"])
+    invoices = tool_context.database.invoices_for(record["id"])
     data = {
         "customer_id": record["id"],
         "name": record["name"],
@@ -372,6 +400,7 @@ def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResul
 
 
 def _search_policies(tool_context: ToolContext, args: PolicyArgs) -> ToolResult:
+    """Tool body: policies in force on the feedback date that match the query, or not_found."""
     category = args.category.value if args.category else None
     hits = tool_context.knowledge_base.search_policies(
         args.query, category, args.top_k, tool_context.as_of
@@ -400,7 +429,11 @@ _BODIES = {
 
 
 def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> ToolResult:
-    """Single attempt. Validates args (allow-list), injects faults, converts failures to `error`."""
+    """Run one tool once: validate args, apply injected faults, turn any failure into an error.
+
+    Never raises: unknown tool -> unknown_tool, bad args -> invalid_arguments, transient fault ->
+    source_unavailable (retryable), any other exception -> source_failure.
+    """
     if name not in _BODIES:
         return ToolResult(name, "unknown", ToolStatus.error, error="unknown_tool")
     source = SOURCES[name]
@@ -432,4 +465,5 @@ def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> 
 
 
 def tier_rank(tier: Optional[str]) -> int:
+    """Position of a tier in TIER_ORDER (standard=0, pro=1, enterprise=2); unknown -> -1."""
     return TIER_ORDER.index(tier) if tier in TIER_ORDER else -1

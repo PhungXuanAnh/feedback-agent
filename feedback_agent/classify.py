@@ -55,6 +55,12 @@ _SEVERE = re.compile(
 
 
 def apply_floor(classification: Classification, text: str) -> Classification:
+    """Code-owned safety rules on top of a classification; they can only RAISE urgency.
+
+    security_concern or a severe word (breach, lawsuit, ...) -> at least high; unclear or
+    confidence < 0.65 -> at least medium. needs_human_triage when unclear, low confidence, or an
+    alternative reading has confidence >= 0.40. Example: billing/low + "we will sue you" -> high.
+    """
     reasons: list[str] = []
     floor = Urgency.low
     if classification.category is Category.security_concern:
@@ -97,7 +103,10 @@ _ABUSIVE = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|d
 
 
 def keyword_classify(text: str) -> Classification:
-    """Degraded path when the LLM is unavailable: coarse, never confident, always sent to triage."""
+    """Degraded path when the LLM is unavailable: coarse, never confident, always sent to triage.
+
+    The first matching keyword rule wins (security first): "charged twice" -> billing_issue.
+    """
     category = next(
         (candidate for candidate, rx in _KEYWORDS if re.search(rx, text, re.I)), Category.unclear
     )
@@ -118,7 +127,11 @@ def keyword_classify(text: str) -> Classification:
 
 
 def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
-    """Raises LLMUnavailable when the provider fails or returns an unusable answer."""
+    """Classify with ONE forced classify_feedback call, then apply_floor.
+
+    Raises LLMUnavailable when the provider fails or the answer is missing or invalid; the
+    pipeline then uses keyword_classify.
+    """
     messages = [
         Message("system", load_prompt(CLASSIFY_PROMPT)),
         Message("user", f"{wrap_feedback(feedback.text)}\n\nChannel: {feedback.channel.value}"),

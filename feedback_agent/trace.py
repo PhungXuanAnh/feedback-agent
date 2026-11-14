@@ -30,11 +30,16 @@ class Event(str, Enum):
 
 
 def new_trace_id() -> str:
+    """New trace id like "tr_3f9a0c1b2d4e" (load_trace_by_id accepts only this shape)."""
     return "tr_" + uuid.uuid4().hex[:12]
 
 
 class Tracer:
     def __init__(self, trace_id: str, settings: Settings, enabled: bool = True):
+        """Start a trace; if its JSONL file exists (the human review step), continue the numbering.
+
+        With enabled=False or no trace_dir, events are only kept in memory.
+        """
         self.trace_id = trace_id
         self.events: list[dict[str, Any]] = []
         self._price_in, self._price_out = settings.price_in, settings.price_out
@@ -54,6 +59,7 @@ class Tracer:
         self._started_at = time.monotonic()
 
     def emit(self, event: Event, **fields: Any) -> None:
+        """Add one event (seq, ts, trace_id, event + fields) to memory and to the JSONL file."""
         record = {
             "seq": self._seq_offset + len(self.events) + 1,
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
@@ -85,7 +91,7 @@ class Tracer:
         )
 
     def _account(self, usage: Optional[dict], unknown: bool) -> Any:
-        """One provider attempt (successful or failed). Returns this attempt's cost: a number or "unknown"."""
+        """Add one provider attempt to the totals; return its cost (a number or "unknown")."""
         self.provider_calls += 1
         if usage and usage.get("prompt_tokens") is not None:
             self.prompt_tokens = (self.prompt_tokens or 0) + usage["prompt_tokens"]
@@ -101,19 +107,23 @@ class Tracer:
         return "unknown"
 
     def record_llm_call(self, usage: Optional[dict], **fields: Any) -> None:
+        """Count a successful LLM call and emit llm_call with its tokens and cost."""
         self.llm_calls += 1
         cost = self._account(usage, True)
         self.emit(Event.llm_call, usage=usage, cost_usd=cost, **fields)
 
     def record_failed_attempt(self, usage: Optional[dict], unknown: bool, **fields: Any) -> None:
+        """Emit llm_error; `unknown` = tokens may have been billed but were not reported."""
         cost = self._account(usage, unknown)
         self.emit(Event.llm_error, usage=usage, cost_usd=cost, **fields)
 
     def totals(self) -> dict[str, Any]:
-        """llm_calls = successful provider calls; provider_calls = every attempt incl. retries and failures.
-        usage_complete covers the attempts that COULD have been billed: it is False when any such attempt has unknown
-        usage (answered without usage, or the connection broke after sending); tokens and cost are then a lower bound.
-        Attempts that never reached the provider or were rejected with an HTTP error count as known-free.
+        """Run totals for the report counters.
+
+        llm_calls counts successful calls, provider_calls every attempt (retries, failures).
+        usage_complete=False: an attempt that could have been billed reported no usage, so tokens
+        and cost are a lower bound. Attempts that never reached the provider or got an HTTP error
+        count as free.
         """
         priced = (
             self._price_in is not None
@@ -139,6 +149,7 @@ def load_trace_by_id(trace_id: str, trace_dir: str) -> list[dict]:
 
 
 def load_trace(path_or_id: str, trace_dir: str) -> list[dict]:
+    """Read a trace from a file path, or from a trace id inside trace_dir (CLI use)."""
     path = Path(path_or_id)
     if not path.exists():
         path = Path(trace_dir) / f"{path_or_id}.jsonl"

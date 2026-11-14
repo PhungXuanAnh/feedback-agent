@@ -60,6 +60,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def max_urgency(first: Urgency, second: Urgency) -> Urgency:
+    """Return the more urgent of the two, e.g. max_urgency(low, high) -> high."""
     return first if URGENCY_ORDER.index(first) >= URGENCY_ORDER.index(second) else second
 
 
@@ -78,6 +79,7 @@ class Feedback(BaseModel):
     @field_validator("customer_email")
     @classmethod
     def _email(cls, v: str) -> str:
+        """Trim and lowercase the email; reject anything that is not name@domain.tld."""
         v = v.strip().lower()
         if not _EMAIL_RE.match(v):
             raise ValueError("customer_email is not a valid email address")
@@ -86,12 +88,14 @@ class Feedback(BaseModel):
     @field_validator("text")
     @classmethod
     def _text(cls, v: str) -> str:
+        """Trim the text; reject a message that is only whitespace."""
         v = v.strip()
         if not v:
             raise ValueError("text must not be blank")
         return v
 
     def model_post_init(self, __context: Any) -> None:
+        """Cut text longer than MAX_FEEDBACK_CHARS and mark the feedback truncated."""
         if len(self.text) > MAX_FEEDBACK_CHARS:
             self.text = self.text[:MAX_FEEDBACK_CHARS]
             self.truncated = True

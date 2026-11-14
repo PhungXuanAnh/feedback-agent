@@ -6,19 +6,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .config import ROOT, Settings
+from .database import Database
 from .llm import get_provider
 from .pipeline import FeedbackPipeline
-from .store import Store
 from .tools import FaultInjector, KnowledgeBase
 
 
-def open_store(settings: Settings) -> Store:
+def open_database(settings: Settings) -> Database:
     """Open the SQLite DB and load the CSV seed data on first use."""
-    store = Store(settings.database_path)
-    store.init_schema()
-    if store.customer_by_id("C-1001") is None:
-        store.seed_from_csv(Path(settings.data_dir) / "seed")
-    return store
+    database = Database(settings.database_path)
+    database.init_schema()
+    if database.customer_by_id("C-1001") is None:
+        database.seed_from_csv(Path(settings.data_dir) / "seed")
+    return database
 
 
 def build_pipeline(
@@ -27,11 +27,15 @@ def build_pipeline(
     fault_injector: Optional[FaultInjector] = None,
     provider: Any = None,
 ) -> FeedbackPipeline:
+    """FeedbackPipeline from settings: knowledge base files, LLM provider and SQLite database.
+
+    `script` feeds the scripted provider; `provider` replaces the provider entirely (tests).
+    """
     knowledge_base = KnowledgeBase.load(settings.data_dir)
     provider = provider or get_provider(settings, script=script)
     return FeedbackPipeline(
-        settings, open_store(settings), knowledge_base, provider, fault_injector
+        settings, open_database(settings), knowledge_base, provider, fault_injector
     )
 
 
-__all__ = ["ROOT", "build_pipeline", "open_store"]
+__all__ = ["ROOT", "build_pipeline", "open_database"]

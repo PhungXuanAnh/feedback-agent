@@ -9,17 +9,20 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .bootstrap import build_pipeline, open_store
+from .bootstrap import build_pipeline, open_database
 from .config import Settings
+from .database import StorageError
 from .llm import ConfigError, FaultInjectingProvider, get_provider
 from .schemas import Feedback
-from .store import StorageError
 from .tools import FaultInjector
 from .trace import load_trace, render_trace
 
 
 def _fault_injector(specs: list[str]) -> FaultInjector:
-    """--inject-tool-fault search_policies[:N]  (N transient failures, default 1; -1 = always)"""
+    """FaultInjector from --inject-tool-fault values: ["search_policies:2"] fails that tool twice.
+
+    N defaults to 1; -1 = always fail.
+    """
     injector = FaultInjector()
     for spec in specs or []:
         name, _, count = spec.partition(":")
@@ -28,6 +31,11 @@ def _fault_injector(specs: list[str]) -> FaultInjector:
 
 
 def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
+    """`run`: process feedback JSON files and print each report (exit 1 if any input failed).
+
+    With the scripted provider the script defaults to ../scripts/<input file name>, e.g.
+    samples/inputs/02_ambiguous.json -> samples/scripts/02_ambiguous.json.
+    """
     if args.provider:
         settings.llm_provider = args.provider
     for setting_name in ("max_llm_turns", "max_tool_calls"):
@@ -68,17 +76,20 @@ def cmd_run(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def cmd_trace(args: argparse.Namespace, settings: Settings) -> int:
+    """`trace`: print a trace (id or .jsonl path) in readable form."""
     print(render_trace(load_trace(args.trace, settings.trace_dir)))
     return 0
 
 
 def cmd_seed(args: argparse.Namespace, settings: Settings) -> int:
-    store = open_store(settings)
-    print("seeded:", store.seed_from_csv(Path(settings.data_dir) / "seed"))
+    """`seed`: reload customers, tickets and invoices from data/seed/*.csv."""
+    database = open_database(settings)
+    print("seeded:", database.seed_from_csv(Path(settings.data_dir) / "seed"))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: parse the arguments, run the chosen subcommand, return its exit code."""
     settings = Settings.from_env()
     parser = argparse.ArgumentParser(prog="feedback_agent", description=__doc__)
     subparsers = parser.add_subparsers(dest="cmd", required=True)

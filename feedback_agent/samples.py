@@ -23,6 +23,7 @@ SAMPLES = ROOT / "samples"
 
 
 def load_manifest(root: Path = SAMPLES) -> list[dict]:
+    """Sample definitions from samples/manifest.json: name, title, expectations, faults."""
     return json.loads((root / "manifest.json").read_text("utf-8"))["samples"]
 
 
@@ -132,6 +133,7 @@ def run_one(
 
 
 def _fault_injector(specs: Optional[list[str]]) -> FaultInjector:
+    """FaultInjector from the manifest's inject_tool_fault list (same format as the CLI flag)."""
     injector = FaultInjector()
     for spec in specs or []:
         name, _, count = spec.partition(":")
@@ -140,6 +142,7 @@ def _fault_injector(specs: Optional[list[str]]) -> FaultInjector:
 
 
 def _notes(sample: dict, mode: str, report: Report) -> str:
+    """Note for metadata.<mode>.json: who really wrote the report and what was injected."""
     faults = sample.get("faults")
     if mode == "live" and faults:
         return (
@@ -160,6 +163,7 @@ def _notes(sample: dict, mode: str, report: Report) -> str:
 def run_samples(
     settings: Settings, modes: list[str], only: Optional[str] = None, root: Path = SAMPLES
 ) -> list[dict]:
+    """Run the manifest's samples in the given modes and write outputs to samples/<name>/."""
     metas = []
     for sample in load_manifest(root):
         if only and sample["name"] != only:

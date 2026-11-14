@@ -24,18 +24,18 @@ def req(decision, **kw):
 
 
 @pytest.fixture()
-def svc(store, tmp_path):
-    return ReviewService(store, Settings(trace_dir=str(tmp_path / "traces")))
+def svc(database, tmp_path):
+    return ReviewService(database, Settings(trace_dir=str(tmp_path / "traces")))
 
 
 def new_report(run):
     return run([classify_step(), calls(G, C, P), submit()])[0].report_id
 
 
-def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store):
+def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, database):
     # approve -> executed once; repeating the same decision replays the old result, never executes again
     rid = new_report(run)
-    assert store.get_report_row(rid)["status"] == "pending_review"
+    assert database.get_report_row(rid)["status"] == "pending_review"
     first = svc.review(rid, req("approve"))
     assert first["status"] == "executed" and first["execution"][0].startswith(
         "POST /billing/refunds"
@@ -44,7 +44,7 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
     assert again["idempotent"] is True and len(svc.action_executor.calls) == 1
     with pytest.raises(ReviewConflict):
         svc.review(rid, req("reject"))  # conflicting decision -> 409
-    assert len(store.reviews_for(rid)) == 1  # audit untouched, decision kept after executed
+    assert len(database.reviews_for(rid)) == 1  # audit untouched, decision kept after executed
 
     # reject is terminal: nothing is ever executed afterwards
     rid2 = new_report(run)
@@ -67,7 +67,7 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
     with pytest.raises(OverrideRejected):
         svc.review(rid3, req("override", overrides=bad))
     assert (
-        store.get_report_row(rid3)["status"] == "pending_review"
+        database.get_report_row(rid3)["status"] == "pending_review"
     )  # a failed override changes nothing
     good = Overrides(
         urgency="high",
@@ -92,10 +92,10 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, store
         svc.review("rep_missing", req("approve"))
 
 
-def test_api_queue_and_review(store, kb, tmp_path):
+def test_api_queue_and_review(database, kb, tmp_path):
     s = Settings(llm_provider="scripted", trace_dir=str(tmp_path / "traces"), llm_retry_backoff_s=0)
     pipe = FeedbackPipeline(
-        s, store, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
+        s, database, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
     )
     client = TestClient(create_app(s, pipe))
     body = {
@@ -119,14 +119,14 @@ def test_api_queue_and_review(store, kb, tmp_path):
     assert client.get("/reports", params={"status": "pending_review"}).json() == []
 
 
-def test_api_trace_endpoint_takes_ids_only(store, kb, tmp_path, monkeypatch):
+def test_api_trace_endpoint_takes_ids_only(database, kb, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "canary.json").write_text(
         '{"private": 1}\n'
     )  # a file outside trace_dir must stay unreachable
     s = Settings(llm_provider="scripted", trace_dir=str(tmp_path / "traces"), llm_retry_backoff_s=0)
     pipe = FeedbackPipeline(
-        s, store, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
+        s, database, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
     )
     client = TestClient(create_app(s, pipe))
     tid = client.post(

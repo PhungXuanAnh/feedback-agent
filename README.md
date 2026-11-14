@@ -219,7 +219,7 @@ The three required cases, all with tests and samples, plus two more:
 | **Required record missing** | tool returns `not_found`; `record_found=false`, "unverified customer", no tier guessed, no refund (sample 3) |
 | **LLM fails** | retry once, then a no-LLM path: keep what already succeeded, call only the missing sources, build a template report (`degraded_template`, low confidence, triage) (sample 5) |
 | A tool fails | one retry; still failing: `error` is not `not_found`, so the gate is unmet and the run ends as `incomplete_context`, naming the source and proposing only `escalate_to_human` (basis: system guideline `GL-TRIAGE`) |
-| Report store fails | API returns 503; never "queued" |
+| Database fails | API returns 503; never "queued" |
 
 ### 1.4.8. Observability and cost tracking
 
@@ -266,7 +266,7 @@ Every variable (LLM provider and model, step caps, token limit, prices, storage 
 |---|---|
 | Main flow | [`pipeline.py`](feedback_agent/pipeline.py) (the six steps in order), [`agent.py`](feedback_agent/agent.py) (tool loop, executor, caps), [`classify.py`](feedback_agent/classify.py) |
 | Checks and safety | [`validator.py`](feedback_agent/validator.py) (grounding), [`report.py`](feedback_agent/report.py), [`evidence.py`](feedback_agent/evidence.py) (what the tools returned), [`guard.py`](feedback_agent/guard.py) (injection flags, delimiters) |
-| Tools and data | [`tools.py`](feedback_agent/tools.py), [`store.py`](feedback_agent/store.py) (SQLite), [`data/`](data/) (guidelines, policies, seed CSVs) |
+| Tools and data | [`tools.py`](feedback_agent/tools.py), [`database.py`](feedback_agent/database.py) (SQLite), [`data/`](data/) (guidelines, policies, seed CSVs) |
 | Review and API | [`hitl.py`](feedback_agent/hitl.py) (review state machine), [`api.py`](feedback_agent/api.py), [`apiguard.py`](feedback_agent/apiguard.py) (token, rate and daily limits) |
 | LLM | [`llm/`](feedback_agent/llm/) (provider protocol, Gemini, scripted, factory), [`llmcaller.py`](feedback_agent/llmcaller.py) (retry and usage), [`prompts/`](feedback_agent/prompts/) loaded by [`prompts.py`](feedback_agent/prompts.py) (versioned; the version goes into traces and reports) |
 | Shared plumbing | [`schemas.py`](feedback_agent/schemas.py), [`config.py`](feedback_agent/config.py), [`trace.py`](feedback_agent/trace.py), [`bootstrap.py`](feedback_agent/bootstrap.py), [`cli.py`](feedback_agent/cli.py) and [`cli_extra.py`](feedback_agent/cli_extra.py) |

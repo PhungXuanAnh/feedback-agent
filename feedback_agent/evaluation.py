@@ -14,12 +14,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .bootstrap import open_store
+from .bootstrap import open_database
 from .config import Settings
+from .database import Database
 from .evidence import Evidence
 from .pipeline import FeedbackPipeline
 from .schemas import URGENCY_ORDER, Feedback, Urgency
-from .store import Store
 from .tools import KnowledgeBase
 from .trace import load_trace
 
@@ -27,19 +27,28 @@ REQUIRED_EVENTS = {"intake", "classification_completed", "report_generated"}
 
 
 def load_cases(path: str | Path) -> list[dict]:
+    """Labelled cases from an eval JSON file (its "cases" list)."""
     return json.loads(Path(path).read_text("utf-8"))["cases"]
 
 
 def _pct(sorted_vals: list[float], quantile: float) -> Optional[int]:
+    """Nearest-rank percentile of sorted values (p95 of 20 values = the 19th); None if empty."""
     if not sorted_vals:
         return None
     return int(sorted_vals[max(0, math.ceil(quantile * len(sorted_vals)) - 1)])
 
 
-def score_run(case: dict, report, store: Store, trace_dir: str, caps: Settings) -> dict[str, Any]:
+def score_run(
+    case: dict, report, database: Database, trace_dir: str, caps: Settings
+) -> dict[str, Any]:
+    """Score one report against its case label: one row of pass/fail checks and numbers.
+
+    Checks category, minimum urgency, triage, allowed/forbidden actions, required flags,
+    expected retrieval, ids not backed by evidence, caps and trace completeness.
+    """
     label = case["label"]
     evidence = Evidence.from_dict(
-        json.loads(store.get_report_row(report.report_id)["evidence_json"])
+        json.loads(database.get_report_row(report.report_id)["evidence_json"])
     )
     action_types = [action.type.value for action in report.suggested_actions]
     cited = (
@@ -145,6 +154,11 @@ def _error_row(case: dict, e: Exception) -> dict[str, Any]:
 
 
 def summarize(rows: list[dict], settings: Settings) -> dict[str, Any]:
+    """Metrics of one configuration plus, per case, the checks it missed.
+
+    Label metrics count crashed runs as misses (e.g. "12/14"); run metrics use only runs
+    that produced a report.
+    """
     run_count = len(rows)
     scored_rows = [r for r in rows if "error" not in r]  # runs that produced a report
     # label-based metrics use ALL runs: a run that crashed counts as a miss, not as absent
@@ -262,11 +276,16 @@ def run_eval(
     trace_root: Optional[str] = None,
     progress: Optional[Callable[[str], None]] = None,
 ) -> dict[str, Any]:
+    """Run every case `repeats` times in threads, once per max_llm_turns value in `sweep`.
+
+    All runs share one temporary DB; each gets its own trace folder. Returns meta plus, per
+    configuration, the summary and the raw rows.
+    """
     knowledge_base = KnowledgeBase.load(settings.data_dir)
     with tempfile.TemporaryDirectory() as temp_dir:
         base_settings = deepcopy(settings)
         base_settings.database_path = f"{temp_dir}/eval.db"
-        store = open_store(base_settings)
+        database = open_database(base_settings)
         results: dict[str, Any] = {
             "meta": {
                 "started_at": datetime.now(timezone.utc).isoformat(),
@@ -283,6 +302,7 @@ def run_eval(
             turn_settings.max_llm_turns = turns
 
             def one(item: tuple[dict, int], turn_settings=turn_settings) -> dict:
+                """Run and score one (case, repeat); an exception becomes an error row."""
                 case, repeat_no = item
                 run_settings = deepcopy(turn_settings)
                 run_dir = (
@@ -297,10 +317,10 @@ def run_eval(
                         received_at=case["received_at"],
                     )
                     pipeline = FeedbackPipeline(
-                        run_settings, store, knowledge_base, provider_factory(case)
+                        run_settings, database, knowledge_base, provider_factory(case)
                     )
                     report = pipeline.process(feedback)
-                    row = score_run(case, report, store, run_settings.trace_dir, turn_settings)
+                    row = score_run(case, report, database, run_settings.trace_dir, turn_settings)
                 except Exception as e:  # keep going: an eval run must report, not crash
                     row = _error_row(case, e)
                 row["rep"] = repeat_no
@@ -325,6 +345,7 @@ def run_eval(
 
 
 def render_markdown(result: dict[str, Any]) -> str:
+    """The eval result as Markdown: a metrics table per configuration and the cases that missed."""
     meta = result["meta"]
     lines = [
         f"# Eval results ({meta['provider']} / {meta['model']})",

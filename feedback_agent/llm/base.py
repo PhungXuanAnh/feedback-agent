@@ -72,6 +72,7 @@ class LLMTurn:
     raw: Any = None  # includes provider-only fields such as thought signatures; never traced
 
     def as_message(self) -> Message:
+        """This answer as a `model` message for the history (raw kept, Gemini needs it back)."""
         return Message(role="model", text=self.text, tool_calls=list(self.tool_calls), raw=self.raw)
 
 
@@ -85,4 +86,5 @@ class LLMProvider(Protocol):
         tools: list[ToolSpec],
         tool_choice: ToolChoice,
         max_output_tokens: int = 2048,
-    ) -> LLMTurn: ...
+    ) -> LLMTurn:
+        """Send the conversation, return the model's next turn; raise LLMError on failure."""

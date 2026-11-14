@@ -17,6 +17,7 @@ _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
 def _norm(number: str) -> str:
+    """Number text for comparison: "1,249.50" -> "1249.5", "49.0" and "49.00" -> "49"."""
     number = number.replace(",", "")
     return (
         number[:-2]
@@ -39,14 +40,21 @@ _AFTER_CHARGE_WORD = re.compile(
 
 
 def feedback_money(text: str) -> set[str]:
+    """Money amounts the customer wrote, normalised (rules in the comment above _TIME_UNIT).
+
+    Example: "charged $49.00 twice, 37.5 days ago, INV-5005, paid 1,249.50" -> {"49", "1249.5"}.
+    """
     marked = {_norm(match.group(1) or match.group(2)) for match in _MONEY.finditer(text)}
     return marked | {_norm(match.group(1)) for match in _AFTER_CHARGE_WORD.finditer(text)}
 
 
 def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[str]:
-    """Money figures ($N or N USD) in the summary need a money source: a money figure in the feedback (see
-    feedback_money), an invoice amount of this customer, or a policy limit. Digits in ids, dates and
-    durations are not money sources. It does not check what the sentence CLAIMS about the money."""
+    """Problems with money figures and dates in the summary ([] = none).
+
+    An amount ($N, N USD) must be a money figure of the feedback, an invoice amount or a policy
+    cap; an ISO date must appear in the feedback or a tool result. What the sentence CLAIMS
+    about them is not checked.
+    """
     known = feedback_money(feedback_text) | evidence.money_values()
     issues = []
     for match in _MONEY.finditer(summary):
@@ -65,7 +73,12 @@ def check_summary(summary: str, feedback_text: str, evidence: Evidence) -> list[
 
 
 def _refund_issues(action: SuggestedAction, evidence: Evidence) -> list[str]:
-    """issue_refund is the only money action: every condition is checked against run evidence."""
+    """issue_refund is the only money action: every condition is checked against run evidence.
+
+    Needs a cited refund policy, a verified customer, a paid invoice of that customer and an
+    amount <= the invoice; then at least one cited policy must pass its own limits (max_amount,
+    window_days, requires_tier, requires_duplicate_candidate). [] = allowed.
+    """
     refund_policies = []
     for basis_id in action.basis:
         policy = evidence.policy(basis_id)
@@ -138,6 +151,12 @@ def _refund_issues(action: SuggestedAction, evidence: Evidence) -> list[str]:
 def validate_actions(
     actions: list[SuggestedAction], evidence: Evidence, clarification: Optional[str]
 ) -> list[str]:
+    """Problems in the suggested actions ([] = all grounded).
+
+    Each action needs basis ids from this run that allow its type; at most one refund per
+    report; request_more_info needs a clarification question. Used for the LLM's draft AND for
+    an officer's override.
+    """
     issues: list[str] = []
     n_refunds = sum(1 for action in actions if action.type is ActionType.issue_refund)
     if n_refunds > 1:
@@ -174,6 +193,11 @@ def validate_actions(
 
 
 def validate_draft(draft: ReportDraft, evidence: Evidence, feedback_text: str) -> list[str]:
+    """All grounding problems of a draft ([] = accepted).
+
+    Cited ids must come from this run's tool results, customer_context must match the record
+    (or stay empty when not found), then check_summary and validate_actions.
+    """
     issues: list[str] = []
     bad_gl = [
         guideline_id

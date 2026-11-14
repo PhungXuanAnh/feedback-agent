@@ -13,17 +13,17 @@ BODY = {
 }
 
 
-def _client(store, kb, tmp_path, script, **limits):
+def _client(database, kb, tmp_path, script, **limits):
     s = Settings(
         llm_provider="scripted", trace_dir=str(tmp_path / "t"), llm_retry_backoff_s=0, **limits
     )
-    return TestClient(create_app(s, FeedbackPipeline(s, store, kb, ScriptedProvider(script))))
+    return TestClient(create_app(s, FeedbackPipeline(s, database, kb, ScriptedProvider(script))))
 
 
-def test_token_rate_limit_and_daily_caps(store, kb, tmp_path):
+def test_token_rate_limit_and_daily_caps(database, kb, tmp_path):
     one = [classify_step(), calls(G, C, P), submit()]
     # token + rate limit (2 per minute): health and docs stay open, the rest needs the header
-    c = _client(store, kb, tmp_path, one * 2, api_token="secret", rate_limit_per_min=2)
+    c = _client(database, kb, tmp_path, one * 2, api_token="secret", rate_limit_per_min=2)
     h = {"X-API-Token": "secret"}
     assert c.get("/health").status_code == 200 and c.get("/docs").status_code == 200
     assert (
@@ -39,7 +39,7 @@ def test_token_rate_limit_and_daily_caps(store, kb, tmp_path):
         and c.get("/reports", headers=h).status_code == 200
     )
     # daily request cap counts persisted reports (2 exist now), so a restart does not reset it
-    c = _client(store, kb, tmp_path, one, daily_request_limit=2)
+    c = _client(database, kb, tmp_path, one, daily_request_limit=2)
     assert c.post("/feedback", json=BODY).status_code == 429
     # daily token budget: each scripted call reports 1100 tokens, the 2 stored reports used far more than 1000
     used = [
@@ -51,9 +51,9 @@ def test_token_rate_limit_and_daily_caps(store, kb, tmp_path):
         )
         for step in one
     ]
-    c = _client(store, kb, tmp_path, used, daily_token_limit=1000)
+    c = _client(database, kb, tmp_path, used, daily_token_limit=1000)
     assert (
-        store.usage_since("2000-01-01")[0] == 2
+        database.usage_since("2000-01-01")[0] == 2
         and c.post("/feedback", json=BODY).status_code == 201
     )
     assert (
