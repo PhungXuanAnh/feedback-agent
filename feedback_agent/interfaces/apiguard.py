@@ -13,8 +13,8 @@ from typing import Optional
 from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
-from .config import Settings
-from .database import Database
+from ..config import Settings
+from ..database import Database
 
 token_header = APIKeyHeader(
     name="X-API-Token", auto_error=False

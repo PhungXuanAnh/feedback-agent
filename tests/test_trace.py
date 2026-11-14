@@ -1,7 +1,7 @@
 import pytest
 from conftest import C, G, P, calls, classify_step, submit
 from feedback_agent.llm.base import LLMTurn, ToolCall
-from feedback_agent.trace import load_trace, render_trace
+from feedback_agent.ops.trace import load_trace, render_trace
 
 
 def _turn(step, usage):
@@ -37,8 +37,8 @@ def test_failed_attempt_usage_is_counted_and_missing_usage_is_flagged(tmp_path):
     from feedback_agent.config import Settings
     from feedback_agent.llm import GeminiProvider
     from feedback_agent.llm.base import Message, ToolChoice
-    from feedback_agent.llmcaller import LLMCaller
-    from feedback_agent.trace import Tracer
+    from feedback_agent.llm.caller import LLMCaller
+    from feedback_agent.ops.trace import Tracer
 
     replies = [
         {
@@ -90,8 +90,8 @@ def test_usage_complete_distinguishes_unknown_from_known_free_attempts(failure, 
     from feedback_agent.config import Settings
     from feedback_agent.llm import GeminiProvider
     from feedback_agent.llm.base import Message, ToolChoice
-    from feedback_agent.llmcaller import LLMCaller
-    from feedback_agent.trace import Tracer
+    from feedback_agent.llm.caller import LLMCaller
+    from feedback_agent.ops.trace import Tracer
 
     calls_seen = []
 

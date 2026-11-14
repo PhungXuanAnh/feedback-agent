@@ -1,7 +1,7 @@
 import pytest
 
 from conftest import C, G, P, calls, classify_step, submit
-from feedback_agent.trace import load_trace
+from feedback_agent.ops.trace import load_trace
 
 
 def test_happy_path_is_grounded_and_traced(run, tmp_path):

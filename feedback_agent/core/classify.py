@@ -8,11 +8,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
-from .guard import wrap_feedback
-from .llm.base import Message, ToolChoice, ToolSpec
-from .llmcaller import LLMCaller, LLMUnavailable
-from .prompts import CLASSIFY_PROMPT, load_prompt
-from .schemas import (
+from ..llm.base import Message, ToolChoice, ToolSpec
+from ..llm.caller import LLMCaller, LLMUnavailable
+from ..schemas import (
     Alternative,
     Category,
     Classification,
@@ -21,6 +19,8 @@ from .schemas import (
     Urgency,
     max_urgency,
 )
+from .guard import wrap_feedback
+from .prompts import CLASSIFY_PROMPT, load_prompt
 
 TRIAGE_CONFIDENCE = 0.65  # below this the primary category is not trusted (conservative default)
 TRIAGE_ALT_CONFIDENCE = 0.40  # a second reading this plausible means the message is ambiguous

@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from .config import Settings
-from .llm.base import LLMError, LLMProvider, LLMTurn, Message, ToolChoice, ToolSpec
-from .trace import Event, Tracer
+from ..config import Settings
+from ..ops.trace import Event, Tracer
+from .base import LLMError, LLMProvider, LLMTurn, Message, ToolChoice, ToolSpec
 
 
 class LLMUnavailable(RuntimeError):

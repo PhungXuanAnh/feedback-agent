@@ -1,9 +1,9 @@
 import pytest
 
-from feedback_agent.evidence import SYSTEM_GUIDELINE, Evidence
+from feedback_agent.core.evidence import SYSTEM_GUIDELINE, Evidence
+from feedback_agent.core.tools import run_tool
+from feedback_agent.core.validator import validate_actions, validate_draft
 from feedback_agent.schemas import ReportDraft, SuggestedAction
-from feedback_agent.tools import run_tool
-from feedback_agent.validator import validate_actions, validate_draft
 from conftest import AS_OF, DUP_TEXT
 
 
@@ -141,7 +141,7 @@ def test_money_guards_duplicate_refunds_nan_and_id_digits(ev):
 
 
 def test_feedback_money_needs_a_money_context(ev):
-    from feedback_agent.validator import check_summary
+    from feedback_agent.core.validator import check_summary
 
     ok_ev = Evidence(as_of=AS_OF)
     for text in (

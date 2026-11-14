@@ -14,13 +14,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .bootstrap import open_database
-from .config import Settings
-from .database import Database
-from .evidence import Evidence
-from .pipeline import FeedbackPipeline
-from .schemas import URGENCY_ORDER, Feedback, Urgency
-from .tools import KnowledgeBase
+from ..bootstrap import open_database
+from ..config import Settings
+from ..core.evidence import Evidence
+from ..core.pipeline import FeedbackPipeline
+from ..core.tools import KnowledgeBase
+from ..database import Database
+from ..schemas import URGENCY_ORDER, Feedback, Urgency
 from .trace import load_trace
 
 REQUIRED_EVENTS = {"intake", "classification_completed", "report_generated"}

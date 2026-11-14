@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from feedback_agent.core.tools import KnowledgeBase, ToolContext
 from feedback_agent.database import Database
-from feedback_agent.tools import KnowledgeBase, ToolContext
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 AS_OF = date(2026, 9, 22)  # fixed "now" for every test
@@ -40,10 +40,12 @@ def make_ctx(database, kb):
 # ---------------------------------------------------------------- agent helpers
 from datetime import datetime, timezone  # noqa: E402
 
-from feedback_agent import apiguard, hitl, schemas  # noqa: E402
+from feedback_agent import schemas  # noqa: E402
 from feedback_agent.config import Settings  # noqa: E402
+from feedback_agent.core import hitl  # noqa: E402
+from feedback_agent.core.pipeline import FeedbackPipeline  # noqa: E402
+from feedback_agent.interfaces import apiguard  # noqa: E402
 from feedback_agent.llm import ScriptedProvider  # noqa: E402
-from feedback_agent.pipeline import FeedbackPipeline  # noqa: E402
 from feedback_agent.schemas import Feedback  # noqa: E402
 
 NOW = datetime(2026, 9, 22, 9, tzinfo=timezone.utc)

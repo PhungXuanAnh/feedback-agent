@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from .config import Settings
+from ..config import Settings
 
 
 class Event(str, Enum):

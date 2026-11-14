@@ -1,8 +1,8 @@
 """The three failure situations the brief requires: ambiguous input, missing record, LLM/tool failure."""
 
 from conftest import C, DUP_EMAIL, G, P, calls, classify_step, fb, submit
-from feedback_agent.tools import FaultInjector
-from feedback_agent.trace import load_trace
+from feedback_agent.core.tools import FaultInjector
+from feedback_agent.ops.trace import load_trace
 
 GHOST = "ghost@unknown-corp.example"
 

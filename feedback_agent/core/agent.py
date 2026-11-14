@@ -10,13 +10,14 @@ from typing import Any, Optional
 
 from pydantic import ValidationError
 
+from ..config import Settings
+from ..llm.base import Message, ToolCall, ToolChoice, ToolResponse, ToolSpec
+from ..llm.caller import LLMCaller, LLMUnavailable
+from ..ops.trace import Event, Tracer
+from ..schemas import Classification, Feedback, ReportDraft
 from . import guard
-from .config import Settings
 from .evidence import Evidence
-from .llm.base import Message, ToolCall, ToolChoice, ToolResponse, ToolSpec
-from .llmcaller import LLMCaller, LLMUnavailable
 from .prompts import AGENT_PROMPT, load_prompt
-from .schemas import Classification, Feedback, ReportDraft
 from .tools import (
     RETRIEVAL_TOOLS,
     SOURCES,
@@ -26,7 +27,6 @@ from .tools import (
     run_tool,
     tool_specs,
 )
-from .trace import Event, Tracer
 from .validator import validate_draft
 
 SUBMIT_TOOL = ToolSpec(

@@ -6,8 +6,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from .evidence import SYSTEM_GUIDELINE, Evidence
-from .schemas import (
+from ..schemas import (
     ActionParams,
     ActionType,
     Category,
@@ -20,6 +19,7 @@ from .schemas import (
     Urgency,
     max_urgency,
 )
+from .evidence import SYSTEM_GUIDELINE, Evidence
 from .validator import check_summary, validate_draft
 
 _NO_POLICY_OK = {Category.praise, Category.feature_request}
@@ -102,7 +102,7 @@ def build_template_draft(
 ) -> ReportDraft:
     """Report built by code from validated data only (no LLM). Only escalate_to_human and
     request_more_info are proposed, both based on the system guideline GL-TRIAGE."""
-    from .schemas import DraftCustomerContext
+    from ..schemas import DraftCustomerContext
 
     customer_description = (
         "customer record found, tier " + evidence.customer["tier"]

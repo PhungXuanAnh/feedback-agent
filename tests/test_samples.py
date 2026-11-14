@@ -1,5 +1,5 @@
 from feedback_agent.config import Settings
-from feedback_agent.samples import load_manifest, run_sample
+from feedback_agent.ops.samples import load_manifest, run_sample
 
 
 def test_scripted_samples_behave_as_designed():

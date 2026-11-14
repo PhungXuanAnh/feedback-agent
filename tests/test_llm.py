@@ -4,11 +4,11 @@ import httpx
 import pytest
 
 from feedback_agent.config import Settings
+from feedback_agent.core.tools import tool_specs
 from feedback_agent.llm import ConfigError, GeminiProvider, ScriptedProvider, get_provider
 from feedback_agent.llm.base import LLMError, Message, ToolChoice, ToolResponse, ToolSpec
 from feedback_agent.llm.gemini import to_gemini_schema
 from feedback_agent.llm.scripted import ScriptError
-from feedback_agent.tools import tool_specs
 
 # shape of a real generateContent response: parallel calls, ids, thought signature on the first call
 GEMINI_REPLY = {

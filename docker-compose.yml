@@ -16,7 +16,7 @@ services:
       PRICE_PER_MTOK_OUT: ${PRICE_PER_MTOK_OUT:-}
     # Source is bind-mounted and uvicorn reloads on .py changes, so code edits need no rebuild.
     # The hosted demo uses deploy/docker-compose.prod.yml, which keeps the code baked into the image.
-    command: ["uvicorn", "feedback_agent.api:create_app", "--factory", "--reload", "--reload-dir", "feedback_agent",
+    command: ["uvicorn", "feedback_agent.interfaces.api:create_app", "--factory", "--reload", "--reload-dir", "feedback_agent",
               "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ./state:/app/state                # SQLite DB and traces, on the host

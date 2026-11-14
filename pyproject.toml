@@ -19,10 +19,16 @@ dependencies = [
 dev = ["pytest>=8", "httpx2", "black>=24"]
 
 [tool.setuptools]
-packages = ["feedback_agent", "feedback_agent.llm"]
+packages = [
+    "feedback_agent",
+    "feedback_agent.core",
+    "feedback_agent.interfaces",
+    "feedback_agent.llm",
+    "feedback_agent.ops",
+]
 
 [tool.setuptools.package-data]
-feedback_agent = ["prompts/*.md"]
+"feedback_agent.core" = ["prompts/*.md"]
 
 [tool.black]
 line-length = 100

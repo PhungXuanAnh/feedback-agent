@@ -8,9 +8,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .bootstrap import open_database
-from .config import Settings
-from .hitl import ReviewError, ReviewRequest, ReviewService, report_summary
+from ..bootstrap import open_database
+from ..config import Settings
+from ..core.hitl import ReviewError, ReviewRequest, ReviewService, report_summary
 
 
 def cmd_reports(args, settings: Settings) -> int:
@@ -65,7 +65,7 @@ def cmd_serve(args, settings: Settings) -> int:
 
 def cmd_samples(args, settings: Settings) -> int:
     """`samples`: regenerate samples/<name>/ outputs and say whether expectations were met."""
-    from .samples import run_samples
+    from ..ops.samples import run_samples
 
     modes = ["live", "scripted"] if args.mode == "both" else [args.mode]
     for meta in run_samples(settings, modes, args.only):
@@ -79,16 +79,16 @@ def cmd_samples(args, settings: Settings) -> int:
 
 def cmd_demo(args, settings: Settings) -> int:
     """`demo`: offline run of one sample (no API key): report, trace, queue, then approval."""
-    from .samples import SAMPLES, load_manifest
-    from .trace import load_trace, render_trace
+    from ..ops.samples import SAMPLES, load_manifest
+    from ..ops.trace import load_trace, render_trace
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     sample = next(candidate for candidate in load_manifest() if candidate["name"] == args.sample)
     with tempfile.TemporaryDirectory() as temp_dir:
         settings.database_path, settings.trace_dir = f"{temp_dir}/demo.db", f"{temp_dir}/traces"
-        from .bootstrap import build_pipeline
-        from .samples import _fault_injector
-        from .schemas import Feedback
+        from ..bootstrap import build_pipeline
+        from ..ops.samples import _fault_injector
+        from ..schemas import Feedback
 
         settings.llm_provider, settings.llm_retry_backoff_s = "scripted", 0.1
         pipeline = build_pipeline(
@@ -150,9 +150,9 @@ def cmd_eval(args, settings: Settings) -> int:
     --sweep 3,4,5 repeats everything per max_llm_turns value. Exit 1 if a run crashed (CI gate).
     """
     from datetime import datetime, timezone
-    from .config import ROOT
-    from .evaluation import load_cases, render_markdown, run_eval
-    from .llm import get_provider
+    from ..config import ROOT
+    from ..llm import get_provider
+    from ..ops.evaluation import load_cases, render_markdown, run_eval
 
     if args.provider:
         settings.llm_provider = args.provider
@@ -195,7 +195,7 @@ def cmd_eval(args, settings: Settings) -> int:
 
 def register_eval(subparsers) -> None:
     """Add the `eval` subcommand and its options."""
-    from .config import ROOT
+    from ..config import ROOT
 
     eval_parser = subparsers.add_parser(
         "eval", help="run the labelled eval cases (needs a live provider)"

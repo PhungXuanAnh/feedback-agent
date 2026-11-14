@@ -2,8 +2,8 @@ import json
 
 from conftest import C, G, P, calls, classify_step, submit
 from feedback_agent.config import Settings
-from feedback_agent.evaluation import render_markdown, run_eval
 from feedback_agent.llm import ScriptedProvider
+from feedback_agent.ops.evaluation import render_markdown, run_eval
 
 CASE = {
     "id": "dup",

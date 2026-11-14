@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from feedback_agent.tools import KnowledgeBase, ToolStatus, run_tool
+from feedback_agent.core.tools import KnowledgeBase, ToolStatus, run_tool
 
 
 def test_guidelines_found_and_not_found(make_ctx, kb):

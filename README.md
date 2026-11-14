@@ -262,15 +262,15 @@ Every variable (LLM provider and model, step caps, token limit, prices, storage 
 
 ### 1.6.3. Project layout
 
-| Role | Where |
+| Folder | Role and files |
 |---|---|
-| Main flow | [`pipeline.py`](feedback_agent/pipeline.py) (the six steps in order), [`agent.py`](feedback_agent/agent.py) (tool loop, executor, caps), [`classify.py`](feedback_agent/classify.py) |
-| Checks and safety | [`validator.py`](feedback_agent/validator.py) (grounding), [`report.py`](feedback_agent/report.py), [`evidence.py`](feedback_agent/evidence.py) (what the tools returned), [`guard.py`](feedback_agent/guard.py) (injection flags, delimiters) |
-| Tools and data | [`tools.py`](feedback_agent/tools.py), [`database.py`](feedback_agent/database.py) (SQLite), [`data/`](data/) (guidelines, policies, seed CSVs) |
-| Review and API | [`hitl.py`](feedback_agent/hitl.py) (review state machine), [`api.py`](feedback_agent/api.py), [`apiguard.py`](feedback_agent/apiguard.py) (token, rate and daily limits) |
-| LLM | [`llm/`](feedback_agent/llm/) (provider protocol, Gemini, scripted, factory), [`llmcaller.py`](feedback_agent/llmcaller.py) (retry and usage), [`prompts/`](feedback_agent/prompts/) loaded by [`prompts.py`](feedback_agent/prompts.py) (versioned; the version goes into traces and reports) |
-| Shared plumbing | [`schemas.py`](feedback_agent/schemas.py), [`config.py`](feedback_agent/config.py), [`trace.py`](feedback_agent/trace.py), [`bootstrap.py`](feedback_agent/bootstrap.py), [`cli.py`](feedback_agent/cli.py) and [`cli_extra.py`](feedback_agent/cli_extra.py) |
-| Evidence of quality | [`samples/`](samples/) (made by [`samples.py`](feedback_agent/samples.py)), [`eval/`](eval/) with [`evaluation.py`](feedback_agent/evaluation.py), [`tests/`](tests/) (~60 short offline tests) |
+| [`core/`](feedback_agent/core/) main flow | [`pipeline.py`](feedback_agent/core/pipeline.py) (the six steps in order), [`agent.py`](feedback_agent/core/agent.py) (tool loop, executor, caps), [`classify.py`](feedback_agent/core/classify.py), [`tools.py`](feedback_agent/core/tools.py) (the three retrieval tools), [`hitl.py`](feedback_agent/core/hitl.py) (review state machine) |
+| [`core/`](feedback_agent/core/) checks and safety | [`validator.py`](feedback_agent/core/validator.py) (grounding), [`report.py`](feedback_agent/core/report.py), [`evidence.py`](feedback_agent/core/evidence.py) (what the tools returned), [`guard.py`](feedback_agent/core/guard.py) (injection flags, delimiters), [`prompts/`](feedback_agent/core/prompts/) loaded by [`prompts.py`](feedback_agent/core/prompts.py) (versioned; the version goes into traces and reports) |
+| [`interfaces/`](feedback_agent/interfaces/) entry points | [`api.py`](feedback_agent/interfaces/api.py), [`apiguard.py`](feedback_agent/interfaces/apiguard.py) (token, rate and daily limits), [`cli.py`](feedback_agent/interfaces/cli.py) and [`cli_extra.py`](feedback_agent/interfaces/cli_extra.py) |
+| [`llm/`](feedback_agent/llm/) model access | provider protocol, Gemini, scripted, factory; [`caller.py`](feedback_agent/llm/caller.py) (retry and usage) |
+| [`ops/`](feedback_agent/ops/) observability and quality | [`trace.py`](feedback_agent/ops/trace.py), [`samples.py`](feedback_agent/ops/samples.py) (makes [`samples/`](samples/)), [`evaluation.py`](feedback_agent/ops/evaluation.py) (runs [`eval/`](eval/)) |
+| package root, shared | [`schemas.py`](feedback_agent/schemas.py), [`config.py`](feedback_agent/config.py), [`database.py`](feedback_agent/database.py) (SQLite), [`bootstrap.py`](feedback_agent/bootstrap.py) (wiring for the CLI and the API) |
+| Data and tests | [`data/`](data/) (guidelines, policies, seed CSVs), [`tests/`](tests/) (~60 short offline tests) |
 | Operations and docs | [`deploy/`](deploy/DEPLOY.md) (hosted demo), [`docs/DESIGN.md`](docs/DESIGN.md) |
 
 A new LLM provider is one class satisfying `LLMProvider` plus one line in `PROVIDERS`; only Gemini and the scripted provider exist on purpose.
@@ -283,9 +283,9 @@ Built: effective-date and supersession filtering, keyword scoring, hard `top_k`,
 
 | Criterion | Where to look |
 |---|---|
-| Agent design | [1.3](#13-architecture) and [1.4.4](#144-agent-loop-and-step-caps); [`agent.py`](feedback_agent/agent.py); [`WRITEUP.md` Q1](WRITEUP.md#1-why-did-i-structure-the-agent-this-way); traces of samples [1](samples/01_enterprise_outage/) and [2](samples/02_ambiguous/) show the LLM choosing calls |
-| Grounding | [1.4.5](#145-report-and-grounding-validator); [`validator.py`](feedback_agent/validator.py), [`report.py`](feedback_agent/report.py), [`tests/test_validator.py`](tests/test_validator.py); eval "fabricated references" ([`eval/RESULTS.md`](eval/RESULTS.md)); `suggested_action.basis` in [`schemas.py`](feedback_agent/schemas.py) |
-| Tool use | [1.4.3](#143-data-sources-and-tools); [`tools.py`](feedback_agent/tools.py) (typed args, found/not_found/error); `tool_call`/`tool_result` events in the [live trace of sample 1](samples/01_enterprise_outage/trace.live.jsonl) |
+| Agent design | [1.3](#13-architecture) and [1.4.4](#144-agent-loop-and-step-caps); [`agent.py`](feedback_agent/core/agent.py); [`WRITEUP.md` Q1](WRITEUP.md#1-why-did-i-structure-the-agent-this-way); traces of samples [1](samples/01_enterprise_outage/) and [2](samples/02_ambiguous/) show the LLM choosing calls |
+| Grounding | [1.4.5](#145-report-and-grounding-validator); [`validator.py`](feedback_agent/core/validator.py), [`report.py`](feedback_agent/core/report.py), [`tests/test_validator.py`](tests/test_validator.py); eval "fabricated references" ([`eval/RESULTS.md`](eval/RESULTS.md)); `suggested_action.basis` in [`schemas.py`](feedback_agent/schemas.py) |
+| Tool use | [1.4.3](#143-data-sources-and-tools); [`tools.py`](feedback_agent/core/tools.py) (typed args, found/not_found/error); `tool_call`/`tool_result` events in the [live trace of sample 1](samples/01_enterprise_outage/trace.live.jsonl) |
 | Robustness | [1.4.7](#147-failure-behaviour); [`tests/test_robustness.py`](tests/test_robustness.py); samples [2](samples/02_ambiguous/), [3](samples/03_unknown_customer/), [5](samples/05_llm_failure/) |
 | Code quality | small modules ([layout in 1.6.3](#163-project-layout)), typed schemas, no framework, short [tests](tests/) |
 | Communication | this file, [`docs/DESIGN.md`](docs/DESIGN.md) and [`WRITEUP.md`](WRITEUP.md) |

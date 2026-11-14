@@ -8,8 +8,8 @@ import re
 from datetime import date
 from typing import Optional
 
+from ..schemas import ActionType, ReportDraft, SuggestedAction
 from .evidence import Evidence
-from .schemas import ActionType, ReportDraft, SuggestedAction
 from .tools import tier_rank
 
 _MONEY = re.compile(r"(?:\$\s?(\d[\d,]*(?:\.\d+)?))|(?:(\d[\d,]*(?:\.\d+)?)\s?(?:USD|usd|dollars))")
