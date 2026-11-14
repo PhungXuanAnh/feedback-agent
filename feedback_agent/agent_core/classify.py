@@ -128,7 +128,7 @@ def classify_by_keywords(text: str) -> Classification:
     return apply_safety_rules(classification, text)
 
 
-def classify(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
+def classify_by_llm(llm_caller: LLMCaller, feedback: Feedback) -> Classification:
     """Classify with ONE forced classify_feedback call, then apply_safety_rules.
 
     Raises LLMUnavailable when the provider fails or the answer is missing or invalid; the

@@ -15,7 +15,7 @@ from ..llm.caller import LLMCaller, LLMUnavailable
 from ..ops.trace import Event, Tracer, new_trace_id
 from ..schemas import Classification, Feedback, Report, ReportDraft
 from .agent import AgentLoop, policy_query
-from .classify import classify, classify_by_keywords
+from .classify import classify_by_llm, classify_by_keywords
 from .evidence import SYSTEM_GUIDELINE, Evidence
 from .injection_scan import find_injection_patterns
 from .prompts import AGENT_PROMPT, CLASSIFY_PROMPT
@@ -144,7 +144,7 @@ class FeedbackPipeline:
     ) -> tuple[Classification, bool]:
         """Step 3, classify; falls back to keyword rules. Returns (classification, llm_ok)."""
         try:
-            classification = classify(llm_caller, feedback)
+            classification = classify_by_llm(llm_caller, feedback)
             llm_ok = True
         except LLMUnavailable as e:
             classification = classify_by_keywords(feedback.text)
