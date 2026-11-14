@@ -13,7 +13,7 @@ Classification is a hybrid (LLM structured output plus urgency-floor rules and a
 ## 2. What would I change to make it production-ready?
 
 * **Reliability:** a real CRM and knowledge base behind the same typed tool interfaces, timeouts, circuit breakers, a model fallback chain, and an outbox with idempotency keys so "approved" and "executed" cannot run twice.
-* **Cost and latency:** tune caps and thinking level per step (low thinking already cut median latency from about 13 s to 5 s), a smaller model for classification, prompt caching, async or batch intake.
+* **Cost and latency:** tune caps and thinking level per step (low thinking cut median latency from about 13 s to 5 s on 2026-10-04), a smaller model for classification, prompt caching, async or batch intake.
 * **Evaluation:** a much larger labelled set from real tickets, retrieval recall@k, an LLM judge calibrated against officers, a CI gate per prompt version, and the **override rate** as the standing quality signal. Confidence is a heuristic today and needs calibration.
 * **Security and scale:** authenticate the sender, redact PII in traces, add an injection classifier and red-team suite, and keep a human in the loop for money, legal and security. For a large knowledge base: metadata pre-filters, hybrid search with a reranker, deterministic conflict rules (README section [1.7](README.md#17-scaling-the-knowledge-base-not-built-here)).
 
