@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 from ..config import Settings
-from ..ops.trace import Event, Tracer
+from ..ops.trace import Tracer
 from .base import LLMError, LLMProvider, LLMTurn, Message, ToolMode, ToolSpec
 
 

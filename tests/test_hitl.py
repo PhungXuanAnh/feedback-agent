@@ -1,9 +1,7 @@
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import C, G, P, calls, classify_step, fb, submit
+from conftest import C, G, P, calls, classify_step, submit
 from feedback_agent.agent_core.hitl import (
     Overrides,
     OverrideRejected,
@@ -141,3 +139,8 @@ def test_api_trace_endpoint_takes_ids_only(database, kb, tmp_path, monkeypatch):
         client.get("/traces/canary.json").status_code == 404
         and client.get("/traces/..%2Fcanary").status_code == 404
     )
+
+
+def test_override_must_keep_at_least_one_action():
+    with pytest.raises(ValueError):
+        ReviewRequest(decision="override", actor="officer", overrides={"suggested_actions": []})

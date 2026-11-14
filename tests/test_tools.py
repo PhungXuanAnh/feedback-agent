@@ -33,6 +33,9 @@ def test_customer_found_notfound_and_scope_lock(make_ctx):
     assert (
         run_tool(make_ctx(), "lookup_customer", {"customer_id": "C-1001"}).error == "out_of_scope"
     )
+    # ids are compared case-insensitively, like the executor's cache key
+    by_id = run_tool(make_ctx(), "lookup_customer", {"customer_id": "c-1004"})
+    assert by_id.status is ToolStatus.found
 
 
 def test_policy_search_is_bounded_and_not_found(make_ctx):
@@ -44,8 +47,10 @@ def test_policy_search_is_bounded_and_not_found(make_ctx):
     ids = [p["policy_id"] for p in r.data["policies"]]
     assert r.status is ToolStatus.found and len(ids) <= 3 and ids[0] == "POL-DUP-01"
     assert (
-        run_tool(make_ctx(), "search_policies", {"query": "zzzz qqqq"}).status
-        is ToolStatus.not_found
+        run_tool(
+            make_ctx(), "search_policies", {"query": "zzzz qqqq", "category": "billing_issue"}
+        ).status
+        is ToolStatus.not_found  # the category alone is not a match
     )
 
 

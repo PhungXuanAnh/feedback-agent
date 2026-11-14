@@ -169,7 +169,7 @@ def summarize(rows: list[dict], settings: Settings) -> dict[str, Any]:
     )
     frac_ok = lambda key: f"{sum(1 for r in scored_rows if r[key])}/{len(scored_rows)}"
     triage_expected_rows = [r for r in rows if r["triage_expected"]]
-    triage_unexpected_rows = [r for r in rows if not r["triage_expected"]]
+    triage_unexpected_rows = [r for r in scored_rows if not r["triage_expected"]]
     expected_guideline_count = sum(len(r["expected_guidelines"]) for r in rows)
     expected_policy_count = sum(len(r["expected_policies"]) for r in rows)
     injection_rows = [r for r in rows if "injection" in r["tags"]]

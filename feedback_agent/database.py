@@ -35,10 +35,12 @@ class StorageError(RuntimeError):
 
 class Database:
     def __init__(self, path: str):
-        """Remember the DB path and create its folder (":memory:" works for tests)."""
+        """Remember the DB file path and create its folder.
+
+        Each block of work opens a new connection, so ":memory:" would lose the tables; use a file.
+        """
         self.path = str(path)
-        if self.path != ":memory:":
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

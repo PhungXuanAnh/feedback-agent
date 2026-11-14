@@ -49,7 +49,8 @@ class Tracer:
             Path(settings.trace_dir).mkdir(parents=True, exist_ok=True)
             self._path = Path(settings.trace_dir) / f"{trace_id}.jsonl"
             if self._path.exists():  # continuing an existing trace (e.g. the human review step)
-                self._seq_offset = sum(1 for _ in open(self._path, encoding="utf-8"))
+                with open(self._path, encoding="utf-8") as trace_file:
+                    self._seq_offset = sum(1 for _ in trace_file)
         self.llm_calls = 0
         self.provider_calls = 0
         self._usage_missing = 0

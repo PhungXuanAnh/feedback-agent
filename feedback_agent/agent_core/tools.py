@@ -237,7 +237,8 @@ class KnowledgeBase:
         """Keyword search over policies in force on `as_of`: best `top_k` first, each with a score.
 
         Score = 2 per query word found in the policy keywords + 1 per word found in title/text,
-        +3 if the category matches. Policies scoring under MIN_SCORE (2) are dropped.
+        +3 if the category matches. A policy the query does not match at all is dropped, whatever
+        its category, and so is one scoring under MIN_SCORE (2).
         """
         query_tokens = _tokens(query)
         scored = []
@@ -247,6 +248,8 @@ class KnowledgeBase:
                 keyword_tokens |= _tokens(keyword)
             text_tokens = _tokens(policy["title"] + " " + policy["text"]) - keyword_tokens
             score = 2 * len(query_tokens & keyword_tokens) + len(query_tokens & text_tokens)
+            if score == 0:
+                continue
             if category and category in policy["categories"]:
                 score += 3  # boost only, never a filter
             if score >= MIN_SCORE:
@@ -367,7 +370,9 @@ def _lookup_customer(tool_context: ToolContext, args: CustomerArgs) -> ToolResul
             flags=["scope_violation"],
             message="Only the sender of this feedback can be looked up.",
         )
-    if args.customer_id and (record is None or args.customer_id != record["id"]):
+    if args.customer_id and (
+        record is None or args.customer_id.strip().lower() != record["id"].lower()
+    ):
         return ToolResult(
             tool_name,
             source,

@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
-
 from pydantic import BaseModel, Field, ValidationError
 
 from ..llm.base import Message, ToolMode, ToolSpec
@@ -48,7 +46,7 @@ CLASSIFY_TOOL = ToolSpec(
 # Floor rules: code sets a minimum urgency, the LLM can only raise it (under-rating an incident
 # costs more than over-rating a small issue).
 _SEVERE = re.compile(
-    r"\b(breach(ed)?|data leak|leaked|lawsuit|legal action|attorney|lawyer|sue (you|us)|"
+    r"\b((?<!sla )breach(ed)?|data leak|leaked|lawsuit|legal action|attorney|lawyer|sue (you|us)|"
     r"ransomware|unauthori[sz]ed access|hacked|regulator)\b",
     re.I,
 )
@@ -87,7 +85,7 @@ def apply_safety_rules(classification: Classification, text: str) -> Classificat
 
 
 _KEYWORDS = [
-    (Category.security_concern, r"breach|leak|hacked|unauthori[sz]ed|vulnerab|credential"),
+    (Category.security_concern, r"(?<!sla )breach|leak|hacked|unauthori[sz]ed|vulnerab|credential"),
     (Category.data_privacy, r"gdpr|personal data|delete my data|data deletion|privacy"),
     (
         Category.service_outage,

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
 
-from .tools import SOURCES, ToolResult, ToolStatus
+from .tools import ToolResult, ToolStatus
 
 REQUIRED_SOURCES = ["guidelines", "customer", "policies"]
 SYSTEM_GUIDELINE = "GL-TRIAGE"

@@ -42,7 +42,7 @@ class OverrideRejected(ReviewError):
 class Overrides(BaseModel):
     category: Optional[Category] = None
     urgency: Optional[Urgency] = None
-    suggested_actions: Optional[list[SuggestedAction]] = None
+    suggested_actions: Optional[list[SuggestedAction]] = Field(default=None, min_length=1)
     draft_clarification_question: Optional[str] = None
 
 

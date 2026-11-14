@@ -1,6 +1,7 @@
 """The three failure situations the brief requires: ambiguous input, missing record, LLM/tool failure."""
 
 from conftest import C, DUP_EMAIL, G, P, calls, classify_step, fb, submit
+from feedback_agent.agent_core.classify import classify_by_keywords
 from feedback_agent.agent_core.tools import FaultInjector
 from feedback_agent.ops.trace import load_trace
 
@@ -146,3 +147,10 @@ def test_fallback_survives_figure_at_excerpt_boundary_and_bad_tool_args(run):
     bad = LLMTurn(tool_calls=[ToolCall("c1", "lookup_customer", ["not-an-object"])])
     rep, _ = run([classify_step(), bad])
     assert rep.report_generated_by == "degraded_template" and rep.needs_human_triage
+
+
+def test_keyword_fallback_tells_an_sla_breach_from_a_data_breach():
+    outage = classify_by_keywords("Your dashboard was down for 6 hours, that is an SLA breach.")
+    leak = classify_by_keywords("We think there was a data breach in our workspace.")
+    assert (outage.category.value, outage.urgency.value) == ("service_outage", "medium")
+    assert (leak.category.value, leak.urgency.value) == ("security_concern", "high")

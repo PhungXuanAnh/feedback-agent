@@ -13,7 +13,7 @@ from ..agent_core.tools import FaultInjector
 from ..bootstrap import build_pipeline, open_database
 from ..config import Settings
 from ..database import StorageError
-from ..llm import ConfigError, FaultInjectingProvider, get_provider
+from ..llm import ConfigError, FaultInjectingProvider
 from ..ops.trace import load_trace, render_trace
 from ..schemas import Feedback
 

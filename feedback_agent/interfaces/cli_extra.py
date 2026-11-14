@@ -155,7 +155,6 @@ def cmd_eval(args, settings: Settings) -> int:
     --sweep 3,4,5 repeats everything per max_llm_turns value. Exit 1 if a run crashed (CI gate).
     """
     from datetime import datetime, timezone
-    from ..config import ROOT
     from ..llm import get_provider
     from ..ops.evaluation import load_cases, render_markdown, run_eval
 
