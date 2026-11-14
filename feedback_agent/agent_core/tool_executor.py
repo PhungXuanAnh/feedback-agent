@@ -13,7 +13,10 @@ from .evidence import Evidence
 from .injection_scan import find_injection_patterns
 from .tools import SOURCES, ToolContext, ToolResult, ToolStatus, run_tool
 
-_PERSISTENT = ("source_unavailable", "source_failure")  # a source problem, not an LLM mistake
+_SOURCE_FAILURE_ERRORS = (
+    "source_unavailable",
+    "source_failure",
+)  # a source problem, not an LLM mistake
 
 
 @dataclass
@@ -133,7 +136,7 @@ class ToolExecutor:
         self.case_file.evidence.record(tool_result)
         self.case_file.flags.update(tool_result.flags)
         if tool_result.status is ToolStatus.error:
-            if tool_result.error in _PERSISTENT:
+            if tool_result.error in _SOURCE_FAILURE_ERRORS:
                 self.failed_sources[tool_result.source] = tool_result.error
         else:
             self.failed_sources.pop(tool_result.source, None)

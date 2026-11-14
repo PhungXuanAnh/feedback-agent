@@ -49,10 +49,10 @@ from feedback_agent.llm import ScriptedProvider  # noqa: E402
 from feedback_agent.schemas import Feedback  # noqa: E402
 
 NOW = datetime(2026, 9, 22, 9, tzinfo=timezone.utc)
-DUP_TEXT = (
+DUPLICATE_CHARGE_TEXT = (
     "I was charged twice on 2026-09-10, 1200 USD each time. Please refund the duplicate payment."
 )
-DUP_EMAIL = "billing@orchid-robotics.example"
+DUPLICATE_CHARGE_EMAIL = "billing@orchid-robotics.example"
 
 
 class FrozenDatetime(datetime):
@@ -68,7 +68,7 @@ def frozen_now(monkeypatch):
         monkeypatch.setattr(module, "datetime", FrozenDatetime)
 
 
-def fb(text=DUP_TEXT, email=DUP_EMAIL, **kw):
+def fb(text=DUPLICATE_CHARGE_TEXT, email=DUPLICATE_CHARGE_EMAIL, **kw):
     return Feedback(text=text, customer_email=email, received_at=NOW, **kw)
 
 
@@ -94,9 +94,12 @@ def calls(*names_args):
     return {"tool_calls": [{"name": n, "args": a} for n, a in names_args]}
 
 
-G = ("get_cs_guidelines", {"category": "billing_issue"})
-C = ("lookup_customer", {"email": DUP_EMAIL})
-P = ("search_policies", {"query": "duplicate charge refund", "category": "billing_issue"})
+GUIDELINES_CALL = ("get_cs_guidelines", {"category": "billing_issue"})
+CUSTOMER_CALL = ("lookup_customer", {"email": DUPLICATE_CHARGE_EMAIL})
+POLICIES_CALL = (
+    "search_policies",
+    {"query": "duplicate charge refund", "category": "billing_issue"},
+)
 
 
 def submit(

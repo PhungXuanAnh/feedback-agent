@@ -1,6 +1,6 @@
 import json
 
-from conftest import C, G, P, calls, classify_step, submit
+from conftest import CUSTOMER_CALL, GUIDELINES_CALL, POLICIES_CALL, calls, classify_step, submit
 from feedback_agent.config import Settings
 from feedback_agent.llm import ScriptedProvider
 from feedback_agent.ops.evaluation import render_markdown, run_eval
@@ -30,11 +30,15 @@ def test_eval_scores_runs_and_lists_misses(tmp_path):
     }  # a deliberate miss
     degraded = {**CASE, "id": "llm-down"}
     scripts = {
-        "dup": [classify_step(), calls(G, C, P), submit()],
-        "mislabelled": [classify_step(), calls(G, C, P), submit()],
+        "dup": [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()],
+        "mislabelled": [
+            classify_step(),
+            calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL),
+            submit(),
+        ],
         "llm-down": [
             classify_step(),
-            calls(G, C, P),
+            calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL),
             {"error": "transient"},
             {"error": "transient"},
         ],
@@ -67,7 +71,9 @@ def test_eval_counts_crashed_runs_as_failures_and_never_reports_all_clear(tmp_pa
     def factory(case):
         if case["id"] == "boom":
             raise RuntimeError("controlled failure")
-        return ScriptedProvider([classify_step(), calls(G, C, P), submit()])
+        return ScriptedProvider(
+            [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
+        )
 
     s = Settings(
         llm_provider="scripted", llm_retry_backoff_s=0, data_dir=str(__import__("conftest").DATA)

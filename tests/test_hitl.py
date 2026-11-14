@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import C, G, P, calls, classify_step, submit
+from conftest import CUSTOMER_CALL, GUIDELINES_CALL, POLICIES_CALL, calls, classify_step, submit
 from feedback_agent.agent_core.hitl import (
     Overrides,
     OverrideRejected,
@@ -27,7 +27,9 @@ def svc(database, tmp_path):
 
 
 def new_report(run):
-    return run([classify_step(), calls(G, C, P), submit()])[0].report_id
+    return run([classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()])[
+        0
+    ].report_id
 
 
 def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, database):
@@ -93,7 +95,12 @@ def test_review_flow_approve_idempotent_reject_terminal_override(run, svc, datab
 def test_api_queue_and_review(database, kb, tmp_path):
     s = Settings(llm_provider="scripted", trace_dir=str(tmp_path / "traces"), llm_retry_backoff_s=0)
     pipe = FeedbackPipeline(
-        s, database, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
+        s,
+        database,
+        kb,
+        ScriptedProvider(
+            [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
+        ),
     )
     client = TestClient(create_app(s, pipe))
     body = {
@@ -124,7 +131,12 @@ def test_api_trace_endpoint_takes_ids_only(database, kb, tmp_path, monkeypatch):
     )  # a file outside trace_dir must stay unreachable
     s = Settings(llm_provider="scripted", trace_dir=str(tmp_path / "traces"), llm_retry_backoff_s=0)
     pipe = FeedbackPipeline(
-        s, database, kb, ScriptedProvider([classify_step(), calls(G, C, P), submit()])
+        s,
+        database,
+        kb,
+        ScriptedProvider(
+            [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
+        ),
     )
     client = TestClient(create_app(s, pipe))
     tid = client.post(

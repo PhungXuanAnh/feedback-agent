@@ -14,7 +14,7 @@ import httpx
 from .base import LLMError, LLMTurn, Message, ToolCall, ToolMode, ToolSpec
 
 _ALLOWED_FORMATS = {"date", "date-time", "enum"}
-_DROP = {"$defs", "$ref", "title", "default", "additionalProperties", "examples"}
+_UNSUPPORTED_SCHEMA_KEYS = {"$defs", "$ref", "title", "default", "additionalProperties", "examples"}
 _GEMINI_MODES = {  # functionCallingConfig.mode
     ToolMode.auto: "AUTO",
     ToolMode.required: "ANY",
@@ -51,7 +51,7 @@ def to_gemini_schema(schema: dict[str, Any], defs: Optional[dict] = None) -> dic
         return {"type": "string"}
     reduced: dict[str, Any] = {}
     for k, v in schema.items():
-        if k in _DROP or (k == "format" and v not in _ALLOWED_FORMATS):
+        if k in _UNSUPPORTED_SCHEMA_KEYS or (k == "format" and v not in _ALLOWED_FORMATS):
             continue
         if k == "properties":
             reduced[k] = {

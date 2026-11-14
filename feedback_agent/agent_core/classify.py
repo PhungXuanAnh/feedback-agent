@@ -21,7 +21,9 @@ from .guard import wrap_feedback
 from .prompts import CLASSIFY_PROMPT, load_prompt
 
 TRIAGE_CONFIDENCE = 0.65  # below this the primary category is not trusted (conservative default)
-TRIAGE_ALT_CONFIDENCE = 0.40  # a second reading this plausible means the message is ambiguous
+TRIAGE_ALTERNATIVE_CONFIDENCE = (
+    0.40  # a second reading this plausible means the message is ambiguous
+)
 
 
 class ClassifyArgs(BaseModel):
@@ -45,7 +47,7 @@ CLASSIFY_TOOL = ToolSpec(
 
 # Floor rules: code sets a minimum urgency, the LLM can only raise it (under-rating an incident
 # costs more than over-rating a small issue).
-_SEVERE = re.compile(
+_SEVERE_TERMS = re.compile(
     r"\b((?<!sla )breach(ed)?|data leak|leaked|lawsuit|legal action|attorney|lawyer|sue (you|us)|"
     r"ransomware|unauthori[sz]ed access|hacked|regulator)\b",
     re.I,
@@ -64,7 +66,7 @@ def apply_safety_rules(classification: Classification, text: str) -> Classificat
     if classification.category is Category.security_concern:
         floor = Urgency.high
         reasons.append("security_concern")
-    if _SEVERE.search(text):
+    if _SEVERE_TERMS.search(text):
         floor = Urgency.high
         reasons.append("severe_term")
     if classification.category is Category.unclear or classification.confidence < TRIAGE_CONFIDENCE:
@@ -77,14 +79,14 @@ def apply_safety_rules(classification: Classification, text: str) -> Classificat
         classification.category is Category.unclear
         or classification.confidence < TRIAGE_CONFIDENCE
         or any(
-            alternative.confidence >= TRIAGE_ALT_CONFIDENCE
+            alternative.confidence >= TRIAGE_ALTERNATIVE_CONFIDENCE
             for alternative in classification.alternatives
         )
     )
     return classification
 
 
-_KEYWORDS = [
+_CATEGORY_KEYWORDS = [
     (Category.security_concern, r"(?<!sla )breach|leak|hacked|unauthori[sz]ed|vulnerab|credential"),
     (Category.data_privacy, r"gdpr|personal data|delete my data|data deletion|privacy"),
     (
@@ -97,7 +99,7 @@ _KEYWORDS = [
     (Category.feature_request, r"feature|would like|wish|please add|support for"),
     (Category.praise, r"thank|great|love|excellent|awesome"),
 ]
-_ABUSIVE = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|damn)\b", re.I)
+_ABUSIVE_WORDS = re.compile(r"\b(idiot|stupid|useless|scam|garbage|incompetent|moron|damn)\b", re.I)
 
 
 def classify_by_keywords(text: str) -> Classification:
@@ -106,13 +108,13 @@ def classify_by_keywords(text: str) -> Classification:
     The first matching keyword rule wins (security first): "charged twice" -> billing_issue.
     """
     category = Category.unclear
-    for candidate, rx in _KEYWORDS:
+    for candidate, rx in _CATEGORY_KEYWORDS:
         if re.search(rx, text, re.I):
             category = candidate
             break
     sentiment = (
         Sentiment.abusive
-        if _ABUSIVE.search(text)
+        if _ABUSIVE_WORDS.search(text)
         else Sentiment.positive if category is Category.praise else Sentiment.negative
     )
     classification = Classification(

@@ -1,6 +1,15 @@
 """The three failure situations the brief requires: ambiguous input, missing record, LLM/tool failure."""
 
-from conftest import C, DUP_EMAIL, G, P, calls, classify_step, fb, submit
+from conftest import (
+    CUSTOMER_CALL,
+    DUPLICATE_CHARGE_EMAIL,
+    GUIDELINES_CALL,
+    POLICIES_CALL,
+    calls,
+    classify_step,
+    fb,
+    submit,
+)
 from feedback_agent.agent_core.classify import classify_by_keywords
 from feedback_agent.agent_core.tools import FaultInjector
 from feedback_agent.ops.trace import load_trace
@@ -22,7 +31,7 @@ def test_ambiguous_input_goes_to_triage_with_alternatives_and_clarification(run)
     rep, _ = run(
         [
             classify_step("unclear", 0.35, "low", alts),
-            calls(gl, C, ("search_policies", {"query": "help"})),
+            calls(gl, CUSTOMER_CALL, ("search_policies", {"query": "help"})),
             submit(
                 [ask],
                 cited_pol=(),
@@ -31,7 +40,7 @@ def test_ambiguous_input_goes_to_triage_with_alternatives_and_clarification(run)
                 draft_clarification_question="Which feature is affected, and since when?",
             ),
         ],
-        fb("it does not work, please fix", DUP_EMAIL),
+        fb("it does not work, please fix", DUPLICATE_CHARGE_EMAIL),
     )
     assert (
         rep.needs_human_triage and rep.category.value == "unclear" and rep.urgency.value == "medium"
@@ -49,7 +58,7 @@ def test_missing_customer_record_is_not_found_not_error(run):
     rep, _ = run(
         [
             classify_step(),
-            calls(G, ghost_c, P),
+            calls(GUIDELINES_CALL, ghost_c, POLICIES_CALL),
             submit(
                 [
                     {
@@ -76,12 +85,14 @@ def test_missing_customer_record_is_not_found_not_error(run):
 def test_llm_failures_retry_then_degrade_and_keep_good_results(run, tmp_path):
     t = {"error": "transient"}
     # one transient failure: retried inside the same turn, no degradation, no extra turn used
-    rep, prov = run([classify_step(), t, calls(G, C, P), submit()])
+    rep, prov = run(
+        [classify_step(), t, calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
+    )
     assert (
         rep.report_generated_by == "scripted" and rep.counters["llm_turns"] == 2 and prov.calls == 4
     )
     # LLM dies after the tools ran: retry fails too -> template that reuses the 3 successful results
-    rep, _ = run([classify_step(), calls(G, C, P), t, t])
+    rep, _ = run([classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), t, t])
     assert rep.report_generated_by == "degraded_template" and {
         "degraded",
         "llm_unavailable",
@@ -100,13 +111,14 @@ def test_llm_failures_retry_then_degrade_and_keep_good_results(run, tmp_path):
 def test_tool_errors_retry_once_then_incomplete_context_never_not_found(run):
     # transient source error: retried once automatically, the run is normal
     rep, _ = run(
-        [classify_step(), calls(G, C, P), submit()],
+        [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()],
         fault_injector=FaultInjector({"search_policies": 1}),
     )
     assert rep.report_generated_by == "scripted" and "incomplete_context:policies" not in rep.flags
     # source stays broken: error != not_found, so the evidence gate is NOT satisfied -> incomplete_context
     rep, prov = run(
-        [classify_step(), calls(G, C, P)], fault_injector=FaultInjector({"search_policies": -1})
+        [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL)],
+        fault_injector=FaultInjector({"search_policies": -1}),
     )
     assert (
         rep.report_generated_by == "degraded_template" and prov.calls == 2
@@ -125,7 +137,7 @@ def test_broken_database_raises_instead_of_claiming_queued(run, database, monkey
 
     monkeypatch.setattr(database, "save_report", boom)
     with pytest.raises(StorageError):
-        run([classify_step(), calls(G, C, P), submit()])
+        run([classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()])
 
 
 def test_fallback_survives_figure_at_excerpt_boundary_and_bad_tool_args(run):

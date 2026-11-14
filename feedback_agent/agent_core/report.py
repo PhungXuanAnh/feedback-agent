@@ -22,7 +22,7 @@ from ..schemas import (
 from .evidence import SYSTEM_GUIDELINE, Evidence
 from .validator import check_summary, validate_draft
 
-_NO_POLICY_OK = {Category.praise, Category.feature_request}
+_CATEGORIES_NOT_NEEDING_POLICY = {Category.praise, Category.feature_request}
 
 
 def compute_confidence(classification: Classification, flags: set[str]) -> tuple[float, str]:
@@ -230,7 +230,10 @@ def build_report(
         or "degraded" in flags
         or "grounding_failed" in flags
         or bool(failed_sources)
-        or ("no_applicable_policy" in flags and classification.category not in _NO_POLICY_OK)
+        or (
+            "no_applicable_policy" in flags
+            and classification.category not in _CATEGORIES_NOT_NEEDING_POLICY
+        )
     )
     if triage:
         flags.add("needs_human_triage")

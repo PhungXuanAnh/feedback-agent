@@ -4,7 +4,7 @@ from feedback_agent.agent_core.evidence import SYSTEM_GUIDELINE, Evidence
 from feedback_agent.agent_core.tools import run_tool
 from feedback_agent.agent_core.validator import validate_actions, validate_draft
 from feedback_agent.schemas import ReportDraft, SuggestedAction
-from conftest import AS_OF, DUP_TEXT
+from conftest import AS_OF, DUPLICATE_CHARGE_TEXT
 
 
 @pytest.fixture()
@@ -82,7 +82,7 @@ def test_draft_level_checks(ev):
         suggested_actions=[act("escalate_to_human", ["GL-BILL-01"])],
     )
     ok = ReportDraft(**base)
-    assert validate_draft(ok, ev, DUP_TEXT) == []
+    assert validate_draft(ok, ev, DUPLICATE_CHARGE_TEXT) == []
     bad = ReportDraft(
         **{
             **base,
@@ -96,7 +96,7 @@ def test_draft_level_checks(ev):
             "suggested_actions": [act("request_more_info", ["GL-BILL-01"])],
         }
     )
-    text = " | ".join(validate_draft(bad, ev, DUP_TEXT))
+    text = " | ".join(validate_draft(bad, ev, DUPLICATE_CHARGE_TEXT))
     for part in ("$9,999", "POL-NOPE", "must match the record", "draft_clarification_question"):
         assert part in text
 
@@ -127,14 +127,16 @@ def test_money_guards_duplicate_refunds_nan_and_id_digits(ev):
     assert any(
         "$1004" in i
         for i in validate_draft(
-            ReportDraft(summary="The record confirms a $1004 refund.", **ok), ev, DUP_TEXT
+            ReportDraft(summary="The record confirms a $1004 refund.", **ok),
+            ev,
+            DUPLICATE_CHARGE_TEXT,
         )
     )
     assert (
         validate_draft(
             ReportDraft(summary="Invoice INV-5005 was $1,200.00 and 1200 USD was paid.", **ok),
             ev,
-            DUP_TEXT,
+            DUPLICATE_CHARGE_TEXT,
         )
         == []
     )

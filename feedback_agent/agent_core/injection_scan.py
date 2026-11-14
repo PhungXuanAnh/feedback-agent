@@ -19,17 +19,17 @@ PATTERNS = {
     "fake_delimiter": r"</?\s*(customer_feedback|tool_result|system|assistant)\b",
     "note_to_ai": r"\b(note|message|instruction)s? (to|for) (the )?(support )?(assistant|ai|agent|bot|model)\b",
 }
-_COMPILED = {k: re.compile(v, re.I | re.S) for k, v in PATTERNS.items()}
+_COMPILED_PATTERNS = {k: re.compile(v, re.I | re.S) for k, v in PATTERNS.items()}
 
 
 # Characters a human reviewer cannot see: zero-width and bidi controls, and Unicode tag
 # characters (U+E0000-E007F), which can spell out a whole hidden ASCII instruction. U+200D
 # (zero-width joiner) is left out because emoji use it; subdivision flags (England, Scotland,
 # Wales) use tag characters and are flagged.
-_HIDDEN = re.compile(
+_INVISIBLE_CHARS = re.compile(
     "[\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2064\ufeff\U000e0000-\U000e007f]"
 )
-_TAG_BASE = 0xE0000
+_UNICODE_TAG_OFFSET = 0xE0000
 
 
 def _screening_copy(text: str) -> str:
@@ -42,9 +42,9 @@ def _screening_copy(text: str) -> str:
     chars = []
     for char in text:
         if 0xE0020 <= ord(char) <= 0xE007E:
-            char = chr(ord(char) - _TAG_BASE)
+            char = chr(ord(char) - _UNICODE_TAG_OFFSET)
         chars.append(char)
-    return _HIDDEN.sub("", unicodedata.normalize("NFKC", "".join(chars)))
+    return _INVISIBLE_CHARS.sub("", unicodedata.normalize("NFKC", "".join(chars)))
 
 
 def find_injection_patterns(text: str) -> list[str]:
@@ -53,7 +53,7 @@ def find_injection_patterns(text: str) -> list[str]:
     Hidden characters are reported as a pattern of their own, even when the rest is harmless.
     """
     screened = _screening_copy(text)
-    names = [name for name, rx in _COMPILED.items() if rx.search(screened)]
-    if _HIDDEN.search(text):
+    names = [name for name, rx in _COMPILED_PATTERNS.items() if rx.search(screened)]
+    if _INVISIBLE_CHARS.search(text):
         names.append("hidden_characters")
     return names

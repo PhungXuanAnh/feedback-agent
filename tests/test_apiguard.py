@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from conftest import C, G, P, calls, classify_step, submit
+from conftest import CUSTOMER_CALL, GUIDELINES_CALL, POLICIES_CALL, calls, classify_step, submit
 from feedback_agent.agent_core.pipeline import FeedbackPipeline
 from feedback_agent.config import Settings
 from feedback_agent.interfaces.api import create_app
@@ -21,7 +21,7 @@ def _client(database, kb, tmp_path, script, **limits):
 
 
 def test_token_rate_limit_and_daily_caps(database, kb, tmp_path):
-    one = [classify_step(), calls(G, C, P), submit()]
+    one = [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
     # token + rate limit (2 per minute): health and docs stay open, the rest needs the header
     c = _client(database, kb, tmp_path, one * 2, api_token="secret", rate_limit_per_min=2)
     h = {"X-API-Token": "secret"}

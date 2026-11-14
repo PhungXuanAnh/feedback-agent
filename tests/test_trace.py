@@ -1,5 +1,5 @@
 import pytest
-from conftest import C, G, P, calls, classify_step, submit
+from conftest import CUSTOMER_CALL, GUIDELINES_CALL, POLICIES_CALL, calls, classify_step, submit
 from feedback_agent.llm.base import LLMTurn, ToolCall
 from feedback_agent.ops.trace import load_trace, render_trace
 
@@ -16,7 +16,10 @@ def _turn(step, usage):
 
 def test_trace_has_usage_cost_and_never_the_models_reasoning(run, tmp_path):
     u = {"prompt_tokens": 1000, "output_tokens": 500, "total_tokens": 1500}
-    steps = [_turn(s, u) for s in (classify_step(), calls(G, C, P), submit())]
+    steps = [
+        _turn(s, u)
+        for s in (classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit())
+    ]
     rep, _ = run(steps, price_in=1.0, price_out=2.0)  # USD per million tokens
     assert rep.counters["prompt_tokens"] == 3000 and rep.counters["output_tokens"] == 1500
     assert rep.counters["cost_usd"] == 0.006  # (3000*1 + 1500*2) / 1e6
@@ -28,7 +31,7 @@ def test_trace_has_usage_cost_and_never_the_models_reasoning(run, tmp_path):
         events
     )
     # no usage reported (scripted) or no prices configured: cost is "unknown", never 0
-    rep, _ = run([classify_step(), calls(G, C, P), submit()])
+    rep, _ = run([classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()])
     assert rep.counters["cost_usd"] == "unknown" and rep.counters["prompt_tokens"] is None
 
 

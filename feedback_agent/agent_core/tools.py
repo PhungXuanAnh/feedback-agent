@@ -139,7 +139,7 @@ AGENT_TOOLS = [
 
 
 # ------------------------------------------------------------- knowledge base
-_STOP = {
+_SEARCH_STOP_WORDS = {
     "the",
     "a",
     "an",
@@ -180,11 +180,11 @@ def _tokens(text: str) -> set[str]:
     return {
         _stem(token)
         for token in re.findall(r"[a-z0-9]+", text.lower())
-        if len(token) > 1 and token not in _STOP
+        if len(token) > 1 and token not in _SEARCH_STOP_WORDS
     }
 
 
-MIN_SCORE = 2
+MIN_POLICY_SCORE = 2
 
 
 class KnowledgeBase:
@@ -238,7 +238,7 @@ class KnowledgeBase:
 
         Score = 2 per query word found in the policy keywords + 1 per word found in title/text,
         +3 if the category matches. A policy the query does not match at all is dropped, whatever
-        its category, and so is one scoring under MIN_SCORE (2).
+        its category, and so is one scoring under MIN_POLICY_SCORE (2).
         """
         query_tokens = _tokens(query)
         scored = []
@@ -252,7 +252,7 @@ class KnowledgeBase:
                 continue
             if category and category in policy["categories"]:
                 score += 3  # boost only, never a filter
-            if score >= MIN_SCORE:
+            if score >= MIN_POLICY_SCORE:
                 scored.append((score, policy))
         scored.sort(key=lambda scored_policy: (-scored_policy[0], scored_policy[1]["policy_id"]))
         return [dict(policy, score=policy_score) for policy_score, policy in scored[:top_k]]
@@ -428,7 +428,7 @@ def _search_policies(tool_context: ToolContext, args: PolicyArgs) -> ToolResult:
     )
 
 
-_BODIES = {
+_TOOL_FUNCTIONS = {
     "get_cs_guidelines": _get_cs_guidelines,
     "lookup_customer": _lookup_customer,
     "search_policies": _search_policies,
@@ -441,7 +441,7 @@ def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> 
     Never raises: unknown tool -> unknown_tool, bad args -> invalid_arguments, transient fault ->
     source_unavailable (retryable), any other exception -> source_failure.
     """
-    if name not in _BODIES:
+    if name not in _TOOL_FUNCTIONS:
         return ToolResult(name, "unknown", ToolStatus.error, error="unknown_tool")
     source = SOURCES[name]
     try:
@@ -455,7 +455,7 @@ def run_tool(tool_context: ToolContext, name: str, raw_args: dict[str, Any]) -> 
         )
     try:
         tool_context.fault_injector.fail_if_scheduled(name)
-        return _BODIES[name](tool_context, args)
+        return _TOOL_FUNCTIONS[name](tool_context, args)
     except TransientToolError as e:
         return ToolResult(
             name,

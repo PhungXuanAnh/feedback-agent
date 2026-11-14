@@ -20,7 +20,7 @@ from .tool_executor import CaseFile, ToolExecutor
 from .tools import AGENT_TOOLS, SUBMIT_TOOL, ToolResult
 from .validator import validate_draft
 
-_QSTOP = {
+_POLICY_QUERY_STOP_WORDS = {
     "the",
     "a",
     "an",
@@ -63,7 +63,7 @@ def policy_query(classification: Classification, feedback: Feedback) -> str:
     words = [
         word
         for word in re.findall(r"[a-z0-9]+", feedback.text.lower())
-        if word not in _QSTOP and len(word) > 2
+        if word not in _POLICY_QUERY_STOP_WORDS and len(word) > 2
     ]
     return (
         classification.category.value.replace("_", " ") + " " + " ".join(dict.fromkeys(words))[:80]

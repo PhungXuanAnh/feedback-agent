@@ -1,9 +1,11 @@
-from conftest import C, G, P, calls, classify_step, submit
+from conftest import CUSTOMER_CALL, GUIDELINES_CALL, POLICIES_CALL, calls, classify_step, submit
 from feedback_agent.ops.trace import load_trace
 
 
 def test_happy_path_is_grounded_and_traced(run, tmp_path):
-    rep, prov = run([classify_step(), calls(G, C, P), submit()])
+    rep, prov = run(
+        [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), submit()]
+    )
     assert rep.report_generated_by == "scripted" and rep.status == "pending_review"
     assert (
         rep.cited_policies == ["POL-DUP-01"]
@@ -20,7 +22,15 @@ def test_happy_path_is_grounded_and_traced(run, tmp_path):
 
 
 def test_evidence_gate_rejects_early_submit_then_accepts(run):
-    rep, prov = run([classify_step(), calls(G, C), submit(), calls(P), submit()])
+    rep, prov = run(
+        [
+            classify_step(),
+            calls(GUIDELINES_CALL, CUSTOMER_CALL),
+            submit(),
+            calls(POLICIES_CALL),
+            submit(),
+        ]
+    )
     assert rep.report_generated_by == "scripted" and rep.counters["llm_turns"] == 4
     gate = [m for m in prov.seen[3] if m.role == "tool"][-1].tool_responses[0].response
     assert gate["error"] == "missing_sources" and gate["missing_sources"] == ["policies"]
@@ -31,7 +41,13 @@ def test_caps_are_enforced(run):
     # (even when retried), the early submit hits the gate, and the reserved last turn lets the system
     # run the missing lookup itself (outside the cap) before the forced submit.
     rep, prov = run(
-        [classify_step(), calls(G, G, C, P), calls(P), submit(), submit()],
+        [
+            classify_step(),
+            calls(GUIDELINES_CALL, GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL),
+            calls(POLICIES_CALL),
+            submit(),
+            submit(),
+        ],
         max_tool_calls=2,
         max_llm_turns=4,
     )
@@ -44,7 +60,7 @@ def test_caps_are_enforced(run):
     ) == (2, 1, 1)
     assert prov.calls == 5 and "step_limit_reached" in rep.flags and rep.confidence_level == "low"
     # minimal turns: one free turn, then the reserved one with system lookups for the other two sources
-    rep, prov = run([classify_step(), calls(G), submit()], max_llm_turns=2)
+    rep, prov = run([classify_step(), calls(GUIDELINES_CALL), submit()], max_llm_turns=2)
     assert (
         rep.counters["forced_by_system"] == 2
         and prov.calls == 3
@@ -54,10 +70,15 @@ def test_caps_are_enforced(run):
 
 def test_grounding_fix_once_then_template_without_exceeding_cap(run, tmp_path):
     bad = submit(cited_pol=("POL-FAKE-99",))
-    rep, _ = run([classify_step(), calls(G, C, P), bad, submit()])  # fixed on the second try
+    rep, _ = run(
+        [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), bad, submit()]
+    )  # fixed on the second try
     assert rep.report_generated_by == "scripted" and rep.counters["llm_turns"] == 3
     # still wrong at the reserved last turn: no more LLM calls, report rebuilt from validated data
-    rep, prov = run([classify_step(), calls(G, C, P), bad, bad], max_llm_turns=3)
+    rep, prov = run(
+        [classify_step(), calls(GUIDELINES_CALL, CUSTOMER_CALL, POLICIES_CALL), bad, bad],
+        max_llm_turns=3,
+    )
     assert (
         prov.calls == 4
         and rep.report_generated_by == "degraded_template"
