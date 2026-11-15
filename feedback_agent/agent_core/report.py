@@ -42,21 +42,27 @@ def compute_confidence(classification: Classification, flags: set[str]) -> tuple
         "grounding_failed": 0.30,
     }
     score -= sum(penalty for flag, penalty in penalties.items() if flag in flags)
-    if any(flag.startswith("incomplete_context") for flag in flags):
+    has_incomplete_context = any(flag.startswith("incomplete_context") for flag in flags)
+    if has_incomplete_context:
         score -= 0.25
     score = round(max(0.0, min(1.0, score)), 2)
-    weak = {
-        "degraded",
-        "grounding_failed",
-        "step_limit_reached",
-        "needs_human_triage",
-    } & flags or any(flag.startswith("incomplete_context") for flag in flags)
-    level = "low" if weak else "high" if score >= 0.75 else "medium" if score >= 0.5 else "low"
-    if (
-        level == "high"
-        and {"unverified_customer", "injection_suspected", "injection_in_tool_result"} & flags
-    ):
-        level = "medium"  # an unverified sender or adversarial text never earns "high"
+
+    weak_flags = {"degraded", "grounding_failed", "step_limit_reached", "needs_human_triage"}
+    is_weak = has_incomplete_context or bool(weak_flags & flags)
+    if is_weak:
+        return score, "low"
+
+    if score >= 0.75:
+        level = "high"
+    elif score >= 0.5:
+        level = "medium"
+    else:
+        level = "low"
+
+    # an unverified sender or adversarial text never earns "high"
+    never_high_flags = {"unverified_customer", "injection_suspected", "injection_in_tool_result"}
+    if level == "high" and never_high_flags & flags:
+        level = "medium"
     return score, level
 
 
