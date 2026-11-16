@@ -1,4 +1,6 @@
-# Sample runs
+Sample runs
+
+---
 
 Five input feedback messages, each processed end to end (intake -> guard -> classify -> agent loop
 with tool calls -> grounded report -> review queue). Every sample folder contains:

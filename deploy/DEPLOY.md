@@ -1,4 +1,6 @@
-# Deploying the demo (single host, Docker)
+Deploying the demo (single host, Docker)
+
+---
 
 ```bash
 cd feedback-agent

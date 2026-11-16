@@ -1,4 +1,6 @@
-# Design details and reference
+Design details and reference
+
+---
 
 Details behind the summaries in the [README](../README.md) (sections [1.4](../README.md#14-design-decisions-and-safeguards), [1.6](../README.md#16-api-and-configuration-reference) and [1.7](../README.md#17-scaling-the-knowledge-base-not-built-here)). For the reasoning and trade-offs in one page, read [`WRITEUP.md`](../WRITEUP.md).
 
@@ -11,7 +13,7 @@ Details behind the summaries in the [README](../README.md) (sections [1.4](../RE
 - [HTTP API reference](#http-api-reference)
 - [Scaling the knowledge base (not built here)](#scaling-the-knowledge-base-not-built-here)
 
-## Injection guard and layered defences
+# Injection guard and layered defences
 
 Pydantic validation of text and metadata, then regexes flag known injection patterns before the LLM sees the text (flags only; easy to evade, so never the only defence). The layers:
 
@@ -24,13 +26,13 @@ Pydantic validation of text and metadata, then regexes flag known injection patt
 
 None is 100%, so the design limits damage instead of only trying to detect.
 
-## Classification
+# Classification
 
 Hybrid, because rules are brittle, classic ML needs labelled data, and a bare LLM can be confidently wrong. The schema forces valid values (category, up to 2 alternatives, sentiment, urgency, confidence); then code applies urgency floors
 (security/legal wording or an Enterprise outage means at least `high`; the LLM can only raise urgency) and flags `needs_human_triage` when confidence < 0.65, the category is `unclear` or a second reading has confidence >= 0.4.
 Thresholds are reasoned (conservative), not tuned on the small eval set. If the call fails twice, keyword rules classify instead.
 
-## Agent loop and step caps
+# Agent loop and step caps
 
 ```
  LLM turn ──┬─ retrieval tools ─► executor (validate args, cache, budget, 1 retry) ─► results back to the LLM ─┐
@@ -46,7 +48,7 @@ Two separate caps: `max_llm_turns` (agent-loop turns, default 4, includes the fo
 The last turn is reserved for `submit_report`; if sources are still missing the system runs those lookups itself (`forced_by_system`, max 3, traced), so gate and cap cannot deadlock.
 Worst case per request: 1 classify + 4 agent turns, each retried once, so up to 10 provider calls (all counted). The sweep behind the default of 4 is in the README ([1.5](../README.md#15-evaluation-and-limitations)).
 
-## Grounding validator
+# Grounding validator
 
 `validator.py` checks the report against this run's tool results:
 
@@ -62,18 +64,18 @@ It proves that claims have a basis, not that a conclusion is true; that is the o
 Confidence is computed by code from the classifier's confidence minus penalties (unverified customer, no policy, injection signs, step cap, degradation); triage, degradation or an unverified sender can never be "high". It is a heuristic, not a calibrated probability.
 `confidence_score` is that number before any cap; `confidence_level` is the label after it. A run that needs human triage, degraded, failed grounding, hit the step cap or lacks a required source is forced to `low`, so a report can show a score such as 0.75 with level `low` (this is intentional).
 
-## Human review
+# Human review
 
 `pending_review -> approved | overridden -> executed`, or `rejected` (terminal, never executes). The status change and its audit row share one SQLite transaction with a conditional update, so repeating a decision replays the result and a conflicting one returns 409.
 An override is validated by the same rules and the audit keeps the machine's suggestion beside the final one. The executor is a stub that prints the call it would make.
 
-## Observability and cost tracking
+# Observability and cost tracking
 
 `traces/<trace_id>.jsonl` has one line per step with fixed event names (`intake`, `classification_completed`, `llm_call`, `tool_call`, `tool_result`, `grounding_validation`, `report_generated`, `human_review`, ...); no model reasoning is stored.
 Usage and cost include **failed attempts**: `counters` has `llm_calls`, `provider_calls` and `usage_complete`, which is `false` when an attempt that could have been billed has unknown usage (undecodable 200 body, read timeout), making totals a lower bound.
 Connect failures and HTTP error statuses count as free (Google documents failed 400/500 requests as not billed; other statuses are an assumption). Cost is estimated only when `PRICE_PER_MTOK_IN/OUT` are set, otherwise it is `unknown`, never 0.
 
-## HTTP API reference
+# HTTP API reference
 
 Swagger UI at `/docs`. Calls follow the order of a real session: submit, find the report in the queue, decide, inspect how it was produced.
 
@@ -86,7 +88,7 @@ Swagger UI at `/docs`. Calls follow the order of a real session: submit, find th
 | `POST /reports/<report_id>/review` | The officer's decision on a pending report: `approve` (run the proposed actions), `override` (change category, urgency or actions via `overrides`, then run those) or `reject` (do nothing). Approved actions go to a **stub** executor that only records what it would call (no real refund). The first decision wins: repeating it is a harmless replay, a conflicting one gets `409`. |
 | `GET /traces/<trace_id>` | The step-by-step audit trail of that run (every LLM turn, tool call, validation and token count). |
 
-## Scaling the knowledge base (not built here)
+# Scaling the knowledge base (not built here)
 
 Built: effective-date and supersession filtering, keyword scoring, hard `top_k`, `not_found` as a first-class answer, citations checked against what was retrieved. For a large corpus:
 

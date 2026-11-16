@@ -1,8 +1,10 @@
-# Eval results (gemini / gemini-3.8-flash)
+Eval results (gemini / gemini-3.8-flash)
+
+---
 
 14 labelled cases x 3 repeat(s), run 2026-11-14T12:44:35Z. Numbers describe this run set only: the sample is small, so no quality claim for production is made.
 
-## max_llm_turns = 2 (max_tool_calls = 6)
+# max_llm_turns = 2 (max_tool_calls = 6)
 
 | Metric | Result |
 |---|---|
@@ -34,7 +36,7 @@
 
 No case missed a label in this configuration.
 
-## max_llm_turns = 3 (max_tool_calls = 6)
+# max_llm_turns = 3 (max_tool_calls = 6)
 
 | Metric | Result |
 |---|---|
@@ -66,7 +68,7 @@ No case missed a label in this configuration.
 
 No case missed a label in this configuration.
 
-## max_llm_turns = 4 (max_tool_calls = 6)
+# max_llm_turns = 4 (max_tool_calls = 6)
 
 | Metric | Result |
 |---|---|
@@ -98,7 +100,7 @@ No case missed a label in this configuration.
 
 No case missed a label in this configuration.
 
-## max_llm_turns = 6 (max_tool_calls = 6)
+# max_llm_turns = 6 (max_tool_calls = 6)
 
 | Metric | Result |
 |---|---|

@@ -1,4 +1,6 @@
-# 1. Agentic Customer Feedback System
+1. Agentic Customer Feedback System
+
+---
 
 Takes a customer's free-text feedback and produces a **grounded, structured report for a customer-support (CS) officer**: it classifies the message,
 lets an LLM query three data sources through real tool calls, checks the report's citations and actions in code, and parks the result in a human review queue.
@@ -32,12 +34,12 @@ a **scripted provider** replays hand-written tool-call sequences, so the tests, 
   - [1.7. Scaling the knowledge base (not built here)](#17-scaling-the-knowledge-base-not-built-here)
   - [1.8. Criteria map, credits and AI assistance](#18-criteria-map-credits-and-ai-assistance)
 
-## 1.1. Quick start
+# 1.1. Quick start
 
 - Three ways, from least to most effort: the **hosted demo** (nothing to install), the **offline demo** (Docker, no key) and a **local server** with your own Gemini key. Use the curl examples below to test the API.
 - Free-text feedback needs the real model, so the offline demo only replays hand-written tool-call sequences. 
 
-### 1.1.1. Hosted demo (no setup, no key)
+## 1.1.1. Hosted demo (no setup, no key)
 
 A hosted instance runs at **http://feedback-agent.xuananh1.site:8898/docs** (plain HTTP, include the port) with its own Gemini key, so you do not need one.
 
@@ -85,7 +87,7 @@ curl -s -X POST "$BASE/reports/$REPORT_ID/review" -H "X-API-Token: $TOKEN" -H 'C
 curl -s "$BASE/traces/$TRACE_ID" -H "X-API-Token: $TOKEN"
 ```
 
-### 1.1.2. Offline demo (Docker, no key)
+## 1.1.2. Offline demo (Docker, no key)
 
 Requires only Docker with Compose v2. From the repository folder (`feedback-agent/`):
 
@@ -97,7 +99,7 @@ docker compose run --rm app python -m feedback_agent demo   # full run: report, 
 The demo uses the scripted provider, so it shows the pipeline behaviour, not LLM judgement; the live Gemini outputs are in [1.2](#12-sample-outputs).
 The offline demo uses temporary state and deletes it on exit; the API server persists reports and traces in `state/`, mounted from the repository folder (delete that folder to reset). Without Docker: Python 3.10+, `pip install -e ".[dev]"`, then drop the `docker compose run --rm app` prefix.
 
-### 1.1.3. Local server with your Gemini key
+## 1.1.3. Local server with your Gemini key
 
 ```bash
 cp .env.example .env             # then set GEMINI_API_KEY in .env (LLM_API_KEY is accepted as an alias)
@@ -107,7 +109,7 @@ docker compose up --build        # API on http://localhost:8000, Swagger UI at /
 Then run the four calls from [1.1.1](#111-hosted-demo-no-setup-no-key) with `BASE=http://localhost:8000`. The server starts without a key (`/health` passes), but `POST /feedback` needs it.
 Every `python -m feedback_agent <command>` mentioned in this README runs inside the container as `docker compose run --rm app python -m feedback_agent <command>`.
 
-## 1.2. Sample outputs
+# 1.2. Sample outputs
 
 Five inputs, each with `input.json`, `report`, `trace` and `metadata` from a **live Gemini** run (`*.live.*`, the model chose its own tool calls) and from an **offline scripted** replay (`*.scripted.*`). `report_generated_by` says who wrote the report: `gemini`, `scripted` or `degraded_template` (code, no LLM). More in [`samples/README.md`](samples/README.md).
 
@@ -154,7 +156,7 @@ Trace, simplified to the key fields (`trace.live.jsonl`, 14 steps; `python -m fe
 
 </details>
 
-## 1.3. Architecture
+# 1.3. Architecture
 
 ```
 feedback ─► intake ─► injection scan ─► classify ─► agent loop (LLM + 3 tools) ─► report + validator ─► review queue
@@ -172,19 +174,19 @@ A fixed six-step pipeline; the LLM is used only where language understanding is 
 | 5 | Report + validator | LLM + code | LLM calls `submit_report`; code checks grounding, fills category/urgency/flags/confidence | one repair, then code-built template |
 | 6 | Review queue | no | saved as `pending_review`; an officer approves, overrides or rejects; only then a stub executor acts | storage error is returned, never "queued" |
 
-## 1.4. Design decisions and safeguards
+# 1.4. Design decisions and safeguards
 
 Each subsection is the short version; the full details are in [`docs/DESIGN.md`](docs/DESIGN.md).
 
-### 1.4.1. Injection guard
+## 1.4.1. Injection guard
 
 Regexes only **flag** known patterns and are easy to evade, so the defence is layered (escaped delimiters around customer text and tool results, schema-forced output, read-only tools, a lookup locked to the sender, validator and review as the last gate). The design limits damage instead of only trying to detect. ([details](docs/DESIGN.md#injection-guard-and-layered-defences))
 
-### 1.4.2. Classification
+## 1.4.2. Classification
 
 A hybrid (rules are brittle, classic ML needs labelled data, a bare LLM can be confidently wrong): the LLM fills a schema, then code applies urgency floors and sets `needs_human_triage` when confidence is low or the category is unclear. Thresholds are reasoned, not tuned on the small eval set. ([details](docs/DESIGN.md#classification))
 
-### 1.4.3. Data sources and tools
+## 1.4.3. Data sources and tools
 
 Mock data is in `data/`. Tools are read-only: the LLM cannot refund, close, send or write.
 
@@ -196,20 +198,20 @@ Mock data is in `data/`. Tools are read-only: the LLM cannot refund, close, send
 
 Each tool returns `found`, `not_found` (asked, nothing there: counts as consulted) or `error` (source failed: does **not** count).
 
-### 1.4.4. Agent loop and step caps
+## 1.4.4. Agent loop and step caps
 
 The evidence gate refuses `submit_report` until all three sources were consulted. Two enforced caps, `max_llm_turns` (default 4) and `max_tool_calls` (default 6); the last turn is reserved for `submit_report`, and missing lookups are run by the system (`forced_by_system`, traced), so gate and cap cannot deadlock. The sweep behind the default is in [1.5](#15-evaluation-and-limitations). ([details](docs/DESIGN.md#agent-loop-and-step-caps))
 
-### 1.4.5. Report and grounding validator
+## 1.4.5. Report and grounding validator
 
 Code checks the report against this run's tool results: cited ids exist, the customer context matches the record, money figures and dates have a source, and every action has a `basis` that allows it. `issue_refund` is the only money action and has the strictest checks (policy basis, matching paid invoice, cap, tier, one per report).
 A failed check gets one repair, then the report is rebuilt by code. It proves claims have a basis, not that a conclusion is true; that is the officer's job. ([details](docs/DESIGN.md#grounding-validator))
 
-### 1.4.6. Human review
+## 1.4.6. Human review
 
 `pending_review -> approved | overridden -> executed`, or `rejected` (terminal). Status change and audit row share one SQLite transaction: repeating a decision replays it, a conflicting one returns 409. The executor is a stub. ([details](docs/DESIGN.md#human-review))
 
-### 1.4.7. Failure behaviour
+## 1.4.7. Failure behaviour
 
 The three required cases, all with tests and samples, plus two more:
 
@@ -221,11 +223,11 @@ The three required cases, all with tests and samples, plus two more:
 | A tool fails | one retry; still failing: `error` is not `not_found`, so the gate is unmet and the run ends as `incomplete_context`, naming the source and proposing only `escalate_to_human` (basis: system guideline `GL-TRIAGE`) |
 | Database fails | API returns 503; never "queued" |
 
-### 1.4.8. Observability and cost tracking
+## 1.4.8. Observability and cost tracking
 
 One line per step in `traces/<trace_id>.jsonl`; no model reasoning is stored. Usage and cost include **failed attempts** (`usage_complete` is `false` when some usage is unknown); cost is `unknown`, never 0, unless prices are configured. ([details](docs/DESIGN.md#observability-and-cost-tracking))
 
-## 1.5. Evaluation and limitations
+# 1.5. Evaluation and limitations
 
 - **Eval** ([`eval/RESULTS.md`](eval/RESULTS.md)): 14 labelled cases scored by code (category, urgency, allowed/forbidden actions, triage, sources retrieved, fabricated references, injection attacks and benign messages wrongly flagged, caps, trace, latency). Only measured numbers, misses listed; with so few cases they describe this run set, not production quality. `python -m feedback_agent eval` needs a key.
 - **Cap sweep** (14 cases x 3 runs per setting, live model, `max_tool_calls` = 6):
@@ -242,9 +244,9 @@ One line per step in `traces/<trace_id>.jsonl`; no model reasoning is stored. Us
 - **Known limits:** the grounding validator proves a basis, not truth; the money-figure check, injection regexes and confidence score are heuristics; the sender scope lock only matches metadata (the sender is not authenticated);
   the executor is a stub; the hosted demo's daily limits are not hard billing caps (in-flight requests can exceed them). What production would need is in [`WRITEUP.md`](WRITEUP.md).
 
-## 1.6. API and configuration reference
+# 1.6. API and configuration reference
 
-### 1.6.1. HTTP API
+## 1.6.1. HTTP API
 
 Interactive Swagger UI at `/docs` or use `curl` to call the endpoints. A real session calls the API in this order (`GET /health` is separate: open, no token, only checks the server is up):
 
@@ -256,11 +258,11 @@ Interactive Swagger UI at `/docs` or use `curl` to call the endpoints. A real se
 
 The `curl` calls in [1.1.1](#111-hosted-demo-no-setup-no-key) are steps 1, 2, 4 and 5. Details and status codes: [`docs/DESIGN.md`](docs/DESIGN.md#http-api-reference).
 
-### 1.6.2. Configuration
+## 1.6.2. Configuration
 
 Every variable (LLM provider and model, step caps, token limit, prices, storage paths, shared-deployment protection) is explained in the comments of [`.env.example`](.env.example); copy it to `.env` (`cp .env.example .env`) and set `GEMINI_API_KEY`. Reports and reviews are stored in SQLite and traces as JSONL files, both in `state/` (`state/feedback_agent.db` and `state/traces/`; locally without Docker: `data/feedback_agent.db` and `traces/`).
 
-### 1.6.3. Project layout
+## 1.6.3. Project layout
 
 | Folder | Role and files |
 |---|---|
@@ -275,11 +277,11 @@ Every variable (LLM provider and model, step caps, token limit, prices, storage 
 
 A new LLM provider is one class satisfying `LLMProvider` plus one line in `PROVIDERS`; only Gemini and the scripted provider exist on purpose.
 
-## 1.7. Scaling the knowledge base (not built here)
+# 1.7. Scaling the knowledge base (not built here)
 
 Built: effective-date and supersession filtering, keyword scoring, hard `top_k`, `not_found` as an answer, citations checked against what was retrieved. The plan for a large corpus (chunking, hybrid search, conflict rules, recall@k) is in [`docs/DESIGN.md`](docs/DESIGN.md#scaling-the-knowledge-base-not-built-here).
 
-## 1.8. Criteria map, credits and AI assistance
+# 1.8. Criteria map, credits and AI assistance
 
 | Criterion | Where to look |
 |---|---|
